@@ -16,9 +16,8 @@ services:
         value: 5000
 
   # 2. Frontend Static Site
-  - type: web
+  - type: static
     name: cost-app-frontend
-    env: static
     plan: free
     rootDir: frontend
     buildCommand: npm install && npm run build
