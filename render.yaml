@@ -1,12 +1,16 @@
 services:
-  # 1. Backend Web Service
+  # Single Unified Web Service (Express Backend + React Frontend Static Site)
   - type: web
-    name: cost-app-backend
+    name: ahmed-soliman-cost-app
     env: node
     plan: free
     rootDir: backend
-    buildCommand: npm install
+    buildCommand: npm install && cd ../frontend && npm install && npm run build
     startCommand: node server.js
+    disk:
+      name: company-data
+      mountPath: /opt/render/project/src/backend/db
+      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
@@ -14,17 +18,3 @@ services:
         generateValue: true
       - key: PORT
         value: 5000
-
-staticSites:
-  # 2. Frontend Static Site
-  - name: cost-app-frontend
-    plan: free
-    rootDir: frontend
-    buildCommand: npm install && npm run build
-    publishDir: dist
-    envVars:
-      - key: VITE_API_URL
-        fromService:
-          type: web
-          name: cost-app-backend
-          property: host

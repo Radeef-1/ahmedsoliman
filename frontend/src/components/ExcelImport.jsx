@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { UploadCloud, FileSpreadsheet, AlertTriangle, CheckCircle, ArrowLeftRight } from 'lucide-react';
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '' : 'http://localhost:5000');
 
 
 export default function ExcelImport({ token, onImportSuccess }) {

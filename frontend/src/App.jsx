@@ -7,7 +7,7 @@ import EmployeesList from './components/EmployeesList';
 import CostSettings from './components/CostSettings';
 import ExcelImport from './components/ExcelImport';
 import PivotReport from './components/PivotReport';
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '' : 'http://localhost:5000');
 
 
 export default function App() {

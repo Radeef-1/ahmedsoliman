@@ -450,6 +450,18 @@ app.post('/api/import', authenticateToken, upload.single('file'), async (req, re
     }
 });
 
+// Serve static assets from frontend build directory
+const frontendDistPath = path.join(__dirname, '../frontend/dist');
+if (fs.existsSync(frontendDistPath)) {
+    app.use(express.static(frontendDistPath));
+    app.get('*', (req, res) => {
+        res.sendFile(path.join(frontendDistPath, 'index.html'));
+    });
+    console.log("Serving frontend static assets from:", frontendDistPath);
+} else {
+    console.log("Frontend build folder not found at:", frontendDistPath);
+}
+
 // Start server
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);

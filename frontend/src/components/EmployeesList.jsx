@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Plus, Search, Edit2, Trash2, X } from 'lucide-react';
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '' : 'http://localhost:5000');
 
 
 export default function EmployeesList({ token, projects, entities = [], employees, onDataChange }) {
