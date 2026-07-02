@@ -31,9 +31,13 @@ function authenticateToken(req, res, next) {
     
     if (!token) return res.status(401).json({ error: 'Access denied, token missing' });
     
-    jwt.verify(token, JWT_SECRET, (err, user) => {
+    jwt.verify(token, JWT_SECRET, async (err, user) => {
         if (err) return res.status(403).json({ error: 'Invalid token' });
         req.user = user;
+        
+        // Preload company data cache from database if using Postgres
+        await db.preloadCompanyCache(user.id);
+        
         next();
     });
 }
@@ -462,7 +466,12 @@ if (fs.existsSync(frontendDistPath)) {
     console.log("Frontend build folder not found at:", frontendDistPath);
 }
 
-// Start server
-app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+// Start server after database initialization
+db.initDatabase().then(() => {
+    app.listen(PORT, () => {
+        console.log(`Server is running on port ${PORT}`);
+    });
+}).catch(err => {
+    console.error("Database initialization failed:", err);
+    process.exit(1);
 });

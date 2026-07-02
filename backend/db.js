@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
+const { Client } = require('pg');
 
 const dbFolder = path.join(__dirname, 'db');
 if (!fs.existsSync(dbFolder)) {
@@ -9,7 +10,7 @@ if (!fs.existsSync(dbFolder)) {
 
 const globalDbPath = path.join(dbFolder, 'global.json');
 
-// Global Directory memory storage
+// Memory storage
 let globalData = {
     companies: [],
     counters: {
@@ -17,36 +18,187 @@ let globalData = {
     }
 };
 
-// Load global data
-if (fs.existsSync(globalDbPath)) {
-    try {
-        const fileContent = fs.readFileSync(globalDbPath, 'utf8');
-        if (fileContent.trim()) {
-            globalData = JSON.parse(fileContent);
-            if (!globalData.companies) globalData.companies = [];
-            if (!globalData.counters) globalData.counters = { companies: 0 };
+// Tenant memory cache
+const companyCaches = {};
+
+// PostgreSQL Client
+let pgClient = null;
+const usePostgres = !!process.env.DATABASE_URL;
+
+/**
+ * Initialize database (handles PostgreSQL connection and seeding if production)
+ */
+async function initDatabase() {
+    if (usePostgres) {
+        console.log("PostgreSQL DATABASE_URL detected. Connecting to Postgres...");
+        pgClient = new Client({
+            connectionString: process.env.DATABASE_URL,
+            ssl: { rejectUnauthorized: false }
+        });
+        
+        await pgClient.connect();
+        console.log("Connected to PostgreSQL successfully.");
+
+        // Create tables if not exist
+        await pgClient.query(`
+            CREATE TABLE IF NOT EXISTS global_registry (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+            
+            CREATE TABLE IF NOT EXISTS tenant_store (
+                company_id INTEGER PRIMARY KEY,
+                data JSONB NOT NULL
+            );
+        `);
+
+        // Load global registry from Postgres
+        const res = await pgClient.query("SELECT * FROM global_registry ORDER BY id ASC");
+        globalData.companies = res.rows;
+        
+        // Find max ID for counter
+        const maxIdRes = await pgClient.query("SELECT COALESCE(MAX(id), 0) as max_id FROM global_registry");
+        globalData.counters.companies = maxIdRes.rows[0].max_id;
+        
+        console.log(`Loaded ${globalData.companies.length} company profiles from PostgreSQL.`);
+
+        // Seed default company (1 / 123) if empty
+        if (globalData.companies.length === 0) {
+            const hash = bcrypt.hashSync("123", 10);
+            
+            globalData.counters.companies++;
+            const id = globalData.counters.companies;
+            
+            // Insert default company
+            await pgClient.query(
+                "INSERT INTO global_registry (id, name, email, password_hash, created_at) VALUES ($1, $2, $3, $4, $5)",
+                [id, "أحمد سليمان - شركة ريال البركة للتجارة", "1", hash, new Date().toISOString()]
+            );
+
+            // Seed tenant data
+            const companyData = {
+                cost_settings: [{
+                    company_id: id,
+                    gosi_saudi_rate: 0.22,
+                    gosi_resident_rate: 0.02,
+                    ticket_annual_cost: 900.0,
+                    passport_annual_fee: 650.0,
+                    work_permit_annual_fee: 9700.0,
+                    vacation_days_per_year: 21
+                }],
+                projects: [{ id: 1, company_id: id, name: 'الإدارة العامة' }],
+                entities: [{ id: 1, company_id: id, name: 'شركة ريال البركة للتجارة', saudization_cost: 54942.25 }],
+                employees: [],
+                salaries: [],
+                resident_extra_costs: [],
+                counters: {
+                    projects: 1,
+                    entities: 1,
+                    employees: 0
+                }
+            };
+            
+            await pgClient.query(
+                "INSERT INTO tenant_store (company_id, data) VALUES ($1, $2)",
+                [id, JSON.stringify(companyData)]
+            );
+            
+            // Reload global
+            const reloadRes = await pgClient.query("SELECT * FROM global_registry ORDER BY id ASC");
+            globalData.companies = reloadRes.rows;
+            console.log("Seeded database with default company (Username: 1, Password: 123) in PostgreSQL");
         }
-    } catch (err) {
-        console.error('Error reading global database file:', err);
+    } else {
+        // Fallback Local JSON database loading
+        console.log("Using Local JSON database storage.");
+        if (fs.existsSync(globalDbPath)) {
+            try {
+                const fileContent = fs.readFileSync(globalDbPath, 'utf8');
+                if (fileContent.trim()) {
+                    globalData = JSON.parse(fileContent);
+                    if (!globalData.companies) globalData.companies = [];
+                    if (!globalData.counters) globalData.counters = { companies: 0 };
+                }
+            } catch (err) {
+                console.error('Error reading global database file:', err);
+            }
+        }
+
+        // Seed default company (1 / 123) if local database is empty
+        if (globalData.companies.length === 0) {
+            const hash = bcrypt.hashSync("123", 10);
+            
+            globalData.counters.companies++;
+            const id = globalData.counters.companies;
+            globalData.companies.push({
+                id,
+                name: "أحمد سليمان - شركة ريال البركة للتجارة",
+                email: "1",
+                password_hash: hash,
+                created_at: new Date().toISOString()
+            });
+            saveGlobalToDisk();
+
+            const companyData = {
+                cost_settings: [{
+                    company_id: id,
+                    gosi_saudi_rate: 0.22,
+                    gosi_resident_rate: 0.02,
+                    ticket_annual_cost: 900.0,
+                    passport_annual_fee: 650.0,
+                    work_permit_annual_fee: 9700.0,
+                    vacation_days_per_year: 21
+                }],
+                projects: [{ id: 1, company_id: id, name: 'الإدارة العامة' }],
+                entities: [{ id: 1, company_id: id, name: 'شركة ريال البركة للتجارة', saudization_cost: 54942.25 }],
+                employees: [],
+                salaries: [],
+                resident_extra_costs: [],
+                counters: {
+                    projects: 1,
+                    entities: 1,
+                    employees: 0
+                }
+            };
+            saveCompanyData(id, companyData);
+            console.log("Seeded global database and created isolated database for company 1");
+        }
+    }
+
+    // Proactive update for name if seeded company had old name
+    const defaultComp = globalData.companies.find(c => c.id === 1 && c.name === "شركة ريال البركة للتجارة");
+    if (defaultComp) {
+        defaultComp.name = "أحمد سليمان - شركة ريال البركة للتجارة";
+        saveGlobalToDisk();
+        console.log("Automatically updated default company name in global index");
     }
 }
 
+// Save global index to disk/Postgres
 function saveGlobalToDisk() {
-    try {
-        fs.writeFileSync(globalDbPath, JSON.stringify(globalData, null, 2), 'utf8');
-    } catch (err) {
-        console.error('Error writing to global database file:', err);
+    if (usePostgres) {
+        // Handled directly inside createCompany/updateCompanyProfile
+    } else {
+        try {
+            fs.writeFileSync(globalDbPath, JSON.stringify(globalData, null, 2), 'utf8');
+        } catch (err) {
+            console.error('Error writing to global database file:', err);
+        }
     }
 }
 
-// Helper to get tenant-specific database path
-function getCompanyDbPath(companyId) {
-    return path.join(dbFolder, `company_${companyId}.json`);
-}
-
-// Helper to load tenant database
+// Load company data (uses memory cache or local disk/Postgres)
 function loadCompanyData(companyId) {
-    const filePath = getCompanyDbPath(companyId);
+    const cid = Number(companyId);
+    
+    // 1. Return from memory cache if already loaded
+    if (companyCaches[cid]) {
+        return companyCaches[cid];
+    }
+    
     let companyData = {
         cost_settings: [],
         projects: [],
@@ -61,83 +213,99 @@ function loadCompanyData(companyId) {
         }
     };
 
-    if (fs.existsSync(filePath)) {
-        try {
-            const fileContent = fs.readFileSync(filePath, 'utf8');
-            if (fileContent.trim()) {
-                companyData = JSON.parse(fileContent);
-                if (!companyData.cost_settings) companyData.cost_settings = [];
-                if (!companyData.projects) companyData.projects = [];
-                if (!companyData.entities) companyData.entities = [];
-                if (!companyData.employees) companyData.employees = [];
-                if (!companyData.salaries) companyData.salaries = [];
-                if (!companyData.resident_extra_costs) companyData.resident_extra_costs = [];
-                if (!companyData.counters) companyData.counters = { projects: 0, entities: 0, employees: 0 };
+    if (usePostgres) {
+        // Read synchronously from memory (since it's a cache-first system, 
+        // we pre-load when auth details are read, or we block to load it).
+        // Since node-postgres is async, we run a query. To bridge it, we block once:
+        // Wait, to block once we can run a de-facto blocking query using a sync hook, 
+        // but since we pre-load all company data on startup or upon request, we can load it.
+        // Actually, we can fetch all tenants on startup or load a tenant dynamically!
+        // To do it dynamically and safely, we can run a quick async fetch inside login/auth, 
+        // but since the routing uses it, let's load it from memory first.
+        // To populate companyCaches on request, we can load it asynchronously in server.js middleware!
+        // Let's implement that in server.js (preloadCompanyCache middleware)!
+    } else {
+        const filePath = path.join(dbFolder, `company_${cid}.json`);
+        if (fs.existsSync(filePath)) {
+            try {
+                const fileContent = fs.readFileSync(filePath, 'utf8');
+                if (fileContent.trim()) {
+                    companyData = JSON.parse(fileContent);
+                }
+            } catch (err) {
+                console.error(`Error reading database file for company ${cid}:`, err);
             }
-        } catch (err) {
-            console.error(`Error reading database file for company ${companyId}:`, err);
         }
     }
+    
+    companyCaches[cid] = companyData;
     return companyData;
 }
 
-// Helper to save tenant database
-function saveCompanyData(companyId, companyData) {
-    const filePath = getCompanyDbPath(companyId);
+// Load tenant database asynchronously from Postgres (used by server middleware)
+async function preloadCompanyCache(companyId) {
+    const cid = Number(companyId);
+    if (!usePostgres) return;
+    
     try {
-        fs.writeFileSync(filePath, JSON.stringify(companyData, null, 2), 'utf8');
+        const res = await pgClient.query("SELECT data FROM tenant_store WHERE company_id = $1", [cid]);
+        if (res.rows.length > 0) {
+            companyCaches[cid] = res.rows[0].data;
+        } else {
+            // Initialize new tenant data
+            const companyData = {
+                cost_settings: [{
+                    company_id: cid,
+                    gosi_saudi_rate: 0.22,
+                    gosi_resident_rate: 0.02,
+                    ticket_annual_cost: 900.0,
+                    passport_annual_fee: 650.0,
+                    work_permit_annual_fee: 9700.0,
+                    vacation_days_per_year: 21
+                }],
+                projects: [{ id: 1, company_id: cid, name: 'الإدارة العامة' }],
+                entities: [{ id: 1, company_id: cid, name: 'الشركة الافتراضية', saudization_cost: 0.0 }],
+                employees: [],
+                salaries: [],
+                resident_extra_costs: [],
+                counters: {
+                    projects: 1,
+                    entities: 1,
+                    employees: 0
+                }
+            };
+            await pgClient.query(
+                "INSERT INTO tenant_store (company_id, data) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+                [cid, JSON.stringify(companyData)]
+            );
+            companyCaches[cid] = companyData;
+        }
     } catch (err) {
-        console.error(`Error writing database file for company ${companyId}:`, err);
+        console.error(`Failed to preload PostgreSQL cache for company ${cid}:`, err);
     }
 }
 
-// Seed default company (1 / 123) if global is empty
-if (globalData.companies.length === 0) {
-    const hash = bcrypt.hashSync("123", 10);
+// Save company data (writes to memory cache and local disk/Postgres asynchronously)
+function saveCompanyData(companyId, companyData) {
+    const cid = Number(companyId);
+    companyCaches[cid] = companyData;
     
-    globalData.counters.companies++;
-    const id = globalData.counters.companies;
-    globalData.companies.push({
-        id,
-        name: "أحمد سليمان - شركة ريال البركة للتجارة",
-        email: "1",
-        password_hash: hash,
-        created_at: new Date().toISOString()
-    });
-    saveGlobalToDisk();
-
-    // Create and seed tenant-specific database file
-    const companyData = {
-        cost_settings: [{
-            company_id: id,
-            gosi_saudi_rate: 0.22,
-            gosi_resident_rate: 0.02,
-            ticket_annual_cost: 900.0,
-            passport_annual_fee: 650.0,
-            work_permit_annual_fee: 9700.0,
-            vacation_days_per_year: 21
-        }],
-        projects: [{ id: 1, company_id: id, name: 'الإدارة العامة' }],
-        entities: [{ id: 1, company_id: id, name: 'شركة ريال البركة للتجارة', saudization_cost: 54942.25 }],
-        employees: [],
-        salaries: [],
-        resident_extra_costs: [],
-        counters: {
-            projects: 1,
-            entities: 1,
-            employees: 0
+    if (usePostgres) {
+        // Save to PostgreSQL asynchronously in background (write-through cache)
+        pgClient.query(
+            "INSERT INTO tenant_store (company_id, data) VALUES ($1, $2) ON CONFLICT (company_id) DO UPDATE SET data = EXCLUDED.data",
+            [cid, JSON.stringify(companyData)]
+        ).catch(err => {
+            console.error(`Failed to write PostgreSQL write-through cache for company ${cid}:`, err);
+        });
+    } else {
+        const filePath = path.join(dbFolder, `company_${cid}.json`);
+        try {
+            fs.writeFileSync(filePath, JSON.stringify(companyData, null, 2), 'utf8');
+        } catch (err) {
+            console.error(`Error writing database file for company ${cid}:`, err);
         }
-    };
-    saveCompanyData(id, companyData);
-    console.log("Seeded global database and created isolated database for company 1");
-}
-
-// Proactive update for name if seeded company had old name
-const defaultComp = globalData.companies.find(c => c.id === 1 && c.name === "شركة ريال البركة للتجارة");
-if (defaultComp) {
-    defaultComp.name = "أحمد سليمان - شركة ريال البركة للتجارة";
-    saveGlobalToDisk();
-    console.log("Automatically updated default company name in global index");
+    }
 }
 
 // -------------------------------------------------------------
@@ -153,10 +321,11 @@ function createCompany(name, email, password_hash) {
     globalData.counters.companies++;
     const id = globalData.counters.companies;
     const company = { id, name, email, password_hash, created_at: new Date().toISOString() };
+    
     globalData.companies.push(company);
     saveGlobalToDisk();
 
-    // Initialize tenant database file
+    // Initialize tenant database
     const companyData = {
         cost_settings: [{
             company_id: id,
@@ -178,7 +347,22 @@ function createCompany(name, email, password_hash) {
             employees: 0
         }
     };
-    saveCompanyData(id, companyData);
+    
+    if (usePostgres) {
+        // Insert into global registry table in Postgres
+        pgClient.query(
+            "INSERT INTO global_registry (id, name, email, password_hash, created_at) VALUES ($1, $2, $3, $4, $5)",
+            [id, company.name, company.email, company.password_hash, company.created_at]
+        ).catch(err => {
+            console.error("Failed to insert company into Postgres global registry:", err);
+        });
+        
+        // Save tenant database
+        saveCompanyData(id, companyData);
+    } else {
+        saveCompanyData(id, companyData);
+    }
+    
     return { lastID: id };
 }
 
@@ -192,6 +376,13 @@ function updateCompanyProfile(companyId, name) {
     if (idx !== -1) {
         globalData.companies[idx].name = name.trim();
         saveGlobalToDisk();
+        
+        if (usePostgres) {
+            pgClient.query("UPDATE global_registry SET name = $1 WHERE id = $2", [name.trim(), id])
+                .catch(err => {
+                    console.error("Failed to update company name in Postgres global registry:", err);
+                });
+        }
         return true;
     }
     return false;
@@ -516,6 +707,8 @@ function deleteEmployee(empId, companyId) {
 }
 
 module.exports = {
+    initDatabase,
+    preloadCompanyCache,
     createCompany,
     getCompanyByEmail,
     updateCompanyProfile,
