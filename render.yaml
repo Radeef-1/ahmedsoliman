@@ -15,9 +15,9 @@ services:
       - key: PORT
         value: 5000
 
+staticSites:
   # 2. Frontend Static Site
-  - type: static
-    name: cost-app-frontend
+  - name: cost-app-frontend
     plan: free
     rootDir: frontend
     buildCommand: npm install && npm run build
