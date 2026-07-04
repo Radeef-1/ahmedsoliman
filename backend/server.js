@@ -399,11 +399,30 @@ app.post('/api/import', authenticateToken, upload.single('file'), async (req, re
             return res.status(400).json({ error: 'لم يتم العثور على ورقة الموظفين الأساسية في الملف' });
         }
         
+        // Auto-detect header row dynamically helper
+        function getSheetRows(sheet) {
+            if (!sheet) return [];
+            const rawRows = xlsx.utils.sheet_to_json(sheet, { header: 1 });
+            let headerIndex = 0;
+            for (let i = 0; i < rawRows.length; i++) {
+                const row = rawRows[i];
+                if (Array.isArray(row) && row.some(cell => {
+                    if (!cell) return false;
+                    const str = cell.toString().trim();
+                    return str === 'الرقم الوظيفي' || str === 'الرقم' || str === 'employee_code' || str === 'أسم الموظف' || str === 'اسم الموظف';
+                })) {
+                    headerIndex = i;
+                    break;
+                }
+            }
+            return xlsx.utils.sheet_to_json(sheet, { range: headerIndex });
+        }
+
         // Convert sheets to JSON
-        const metadataRows = xlsx.utils.sheet_to_json(metadataSheet);
-        const salaryRows = salarySheet ? xlsx.utils.sheet_to_json(salarySheet) : [];
-        const residentCostsRows = residentCostsSheet ? xlsx.utils.sheet_to_json(residentCostsSheet) : [];
-        const saudiCostsRows = saudiCostsSheet ? xlsx.utils.sheet_to_json(saudiCostsSheet) : [];
+        const metadataRows = getSheetRows(metadataSheet);
+        const salaryRows = getSheetRows(salarySheet);
+        const residentCostsRows = getSheetRows(residentCostsSheet);
+        const saudiCostsRows = getSheetRows(saudiCostsSheet);
         
         // Create lookup maps by employee code
         const salaryMap = {};
