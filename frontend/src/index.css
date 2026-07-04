@@ -132,6 +132,9 @@ h1, h2, h3, h4, h5, h6 {
   cursor: pointer;
   transition: all 0.2s ease;
   border: 1px solid transparent;
+  background: transparent;
+  width: 100%;
+  text-align: right;
 }
 
 .menu-item:hover {
