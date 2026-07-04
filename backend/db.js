@@ -194,49 +194,59 @@ function saveGlobalToDisk() {
 function loadCompanyData(companyId) {
     const cid = Number(companyId);
     
-    // 1. Return from memory cache if already loaded
+    let companyData;
     if (companyCaches[cid]) {
-        return companyCaches[cid];
-    }
-    
-    let companyData = {
-        cost_settings: [],
-        projects: [],
-        entities: [],
-        branches: [],
-        employees: [],
-        salaries: [],
-        resident_extra_costs: [],
-        counters: {
-            projects: 0,
-            entities: 0,
-            branches: 0,
-            employees: 0
-        }
-    };
-
-    if (usePostgres) {
-        // Cached database fetch is preloaded via middleware
+        companyData = companyCaches[cid];
     } else {
-        const filePath = path.join(dbFolder, `company_${cid}.json`);
-        if (fs.existsSync(filePath)) {
-            try {
-                const fileContent = fs.readFileSync(filePath, 'utf8');
-                if (fileContent.trim()) {
-                    companyData = JSON.parse(fileContent);
+        companyData = {
+            cost_settings: [],
+            projects: [],
+            entities: [],
+            branches: [],
+            employees: [],
+            salaries: [],
+            resident_extra_costs: [],
+            counters: {
+                projects: 0,
+                entities: 0,
+                branches: 0,
+                employees: 0
+            }
+        };
+
+        if (usePostgres) {
+            // Cached database fetch is preloaded via middleware
+        } else {
+            const filePath = path.join(dbFolder, `company_${cid}.json`);
+            if (fs.existsSync(filePath)) {
+                try {
+                    const fileContent = fs.readFileSync(filePath, 'utf8');
+                    if (fileContent.trim()) {
+                        companyData = JSON.parse(fileContent);
+                    }
+                } catch (err) {
+                    console.error(`Error reading database file for company ${cid}:`, err);
                 }
-            } catch (err) {
-                console.error(`Error reading database file for company ${cid}:`, err);
             }
         }
+        companyCaches[cid] = companyData;
     }
     
-    // Backward-compatibility initializations
+    // Safety Initializers for Backward-Compatibility
+    if (!companyData.entities) companyData.entities = [];
     if (!companyData.branches) companyData.branches = [];
-    if (!companyData.counters) companyData.counters = { projects: 0, entities: 0, branches: 0, employees: 0 };
-    if (companyData.counters.branches === undefined) companyData.counters.branches = companyData.branches.length;
+    if (!companyData.projects) companyData.projects = [];
+    if (!companyData.employees) companyData.employees = [];
+    if (!companyData.salaries) companyData.salaries = [];
+    if (!companyData.resident_extra_costs) companyData.resident_extra_costs = [];
+    if (!companyData.cost_settings) companyData.cost_settings = [];
     
-    companyCaches[cid] = companyData;
+    if (!companyData.counters) companyData.counters = {};
+    if (companyData.counters.entities === undefined) companyData.counters.entities = companyData.entities.length;
+    if (companyData.counters.branches === undefined) companyData.counters.branches = companyData.branches.length;
+    if (companyData.counters.projects === undefined) companyData.counters.projects = companyData.projects.length;
+    if (companyData.counters.employees === undefined) companyData.counters.employees = companyData.employees.length;
+    
     return companyData;
 }
 
