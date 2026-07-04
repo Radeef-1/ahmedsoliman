@@ -132,6 +132,7 @@ app.put('/api/settings', authenticateToken, (req, res) => {
 });
 
 // -------------------------------------------------------------
+// -------------------------------------------------------------
 // PROJECTS ENDPOINTS
 // -------------------------------------------------------------
 
@@ -145,12 +146,26 @@ app.get('/api/projects', authenticateToken, (req, res) => {
 });
 
 app.post('/api/projects', authenticateToken, (req, res) => {
-    const { name } = req.body;
+    const { name, entity_id, branch_id } = req.body;
     if (!name) return res.status(400).json({ error: 'اسم المشروع مطلوب' });
     
     try {
-        const result = db.createProject(req.user.id, name);
-        res.status(201).json({ id: result.lastID, name: result.name });
+        const result = db.createProject(req.user.id, name, entity_id, branch_id);
+        res.status(201).json({ id: result.lastID, name: result.name, entity_id, branch_id });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/projects/:id', authenticateToken, (req, res) => {
+    const { name, entity_id, branch_id } = req.body;
+    try {
+        const success = db.updateProject(req.user.id, req.params.id, name, entity_id, branch_id);
+        if (success) {
+            res.json({ message: 'تم تحديث المشروع بنجاح' });
+        } else {
+            res.status(404).json({ error: 'المشروع غير موجود' });
+        }
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -170,7 +185,7 @@ app.delete('/api/projects/:id', authenticateToken, (req, res) => {
 });
 
 // -------------------------------------------------------------
-// ENTITIES (SUB-COMPANIES) ENDPOINTS
+// ENTITIES (LEGAL ENTITIES) ENDPOINTS
 // -------------------------------------------------------------
 
 app.get('/api/entities', authenticateToken, (req, res) => {
@@ -183,21 +198,21 @@ app.get('/api/entities', authenticateToken, (req, res) => {
 });
 
 app.post('/api/entities', authenticateToken, (req, res) => {
-    const { name, saudization_cost } = req.body;
-    if (!name) return res.status(400).json({ error: 'اسم الكيان مطلوب' });
+    const { name, unified_number } = req.body;
+    if (!name) return res.status(400).json({ error: 'اسم الكيان القانوني مطلوب' });
     
     try {
-        const result = db.createEntity(req.user.id, name, saudization_cost);
-        res.status(201).json({ id: result.lastID, name: result.name, saudization_cost: result.saudization_cost });
+        const result = db.createEntity(req.user.id, name, unified_number);
+        res.status(201).json({ id: result.lastID, name: result.name, unified_number: result.unified_number });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
 app.put('/api/entities/:id', authenticateToken, (req, res) => {
-    const { name, saudization_cost } = req.body;
+    const { name, unified_number } = req.body;
     try {
-        const success = db.updateEntity(req.user.id, req.params.id, name, saudization_cost);
+        const success = db.updateEntity(req.user.id, req.params.id, name, unified_number);
         if (success) {
             res.json({ message: 'تم تحديث الكيان بنجاح' });
         } else {
@@ -215,6 +230,58 @@ app.delete('/api/entities/:id', authenticateToken, (req, res) => {
             res.json({ message: 'تم حذف الكيان بنجاح' });
         } else {
             res.status(404).json({ error: 'الكيان غير موجود' });
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// -------------------------------------------------------------
+// BRANCHES ENDPOINTS
+// -------------------------------------------------------------
+
+app.get('/api/branches', authenticateToken, (req, res) => {
+    try {
+        const branches = db.getBranches(req.user.id);
+        res.json(branches);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/branches', authenticateToken, (req, res) => {
+    const { name, cr_number, entity_id } = req.body;
+    if (!name) return res.status(400).json({ error: 'اسم الفرع مطلوب' });
+    
+    try {
+        const result = db.createBranch(req.user.id, name, cr_number, entity_id);
+        res.status(201).json({ id: result.lastID, name: result.name, cr_number, entity_id });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/branches/:id', authenticateToken, (req, res) => {
+    const { name, cr_number, entity_id } = req.body;
+    try {
+        const success = db.updateBranch(req.user.id, req.params.id, name, cr_number, entity_id);
+        if (success) {
+            res.json({ message: 'تم تحديث الفرع بنجاح' });
+        } else {
+            res.status(404).json({ error: 'الفرع غير موجود' });
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/branches/:id', authenticateToken, (req, res) => {
+    try {
+        const success = db.deleteBranch(req.params.id, req.user.id);
+        if (success) {
+            res.json({ message: 'تم حذف الفرع بنجاح' });
+        } else {
+            res.status(404).json({ error: 'الفرع غير موجود' });
         }
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -323,129 +390,188 @@ app.post('/api/import', authenticateToken, upload.single('file'), async (req, re
         const workbook = xlsx.readFile(filePath);
         
         // Find sheets
-        const sheetName = workbook.SheetNames[0]; // read first sheet
-        const worksheet = workbook.Sheets[sheetName];
+        const metadataSheet = workbook.Sheets['اسماء الموظفين'] || workbook.Sheets[workbook.SheetNames[0]];
+        const salarySheet = workbook.Sheets['بـيـان مرتبات'];
+        const residentCostsSheet = workbook.Sheets['تكاليف المقيمين'];
+        const saudiCostsSheet = workbook.Sheets['تكاليف السعودة'];
         
-        // Convert to JSON
-        const rawRows = xlsx.utils.sheet_to_json(worksheet);
+        if (!metadataSheet) {
+            return res.status(400).json({ error: 'لم يتم العثور على ورقة الموظفين الأساسية في الملف' });
+        }
+        
+        // Convert sheets to JSON
+        const metadataRows = xlsx.utils.sheet_to_json(metadataSheet);
+        const salaryRows = salarySheet ? xlsx.utils.sheet_to_json(salarySheet) : [];
+        const residentCostsRows = residentCostsSheet ? xlsx.utils.sheet_to_json(residentCostsSheet) : [];
+        const saudiCostsRows = saudiCostsSheet ? xlsx.utils.sheet_to_json(saudiCostsSheet) : [];
+        
+        // Create lookup maps by employee code
+        const salaryMap = {};
+        salaryRows.forEach(row => {
+            const code = row['الرقم الوظيفي'] || row['employee_code'] || row['code'] || row['ID'];
+            if (code) salaryMap[code.toString().trim()] = row;
+        });
+
+        const extraCostsMap = {};
+        [...residentCostsRows, ...saudiCostsRows].forEach(row => {
+            const code = row['الرقم الوظيفي'] || row['employee_code'] || row['code'] || row['ID'];
+            if (code) extraCostsMap[code.toString().trim()] = row;
+        });
         
         let successCount = 0;
         let skipCount = 0;
         
-        // Get list of existing projects for cache
-        const projectsList = db.getProjects(req.user.id);
-        const projectCache = {};
-        projectsList.forEach(p => {
-            projectCache[p.name.trim()] = p.id;
-        });
-
-        // Get list of existing entities for cache
+        // Load and cache existing structures
         const entitiesList = db.getEntities(req.user.id);
         const entityCache = {};
         entitiesList.forEach(e => {
             entityCache[e.name.trim()] = e.id;
         });
         
-        for (const row of rawRows) {
-            // Find fields map (support both Arabic and English headers)
+        const branchesList = db.getBranches(req.user.id);
+        const branchCache = {};
+        branchesList.forEach(b => {
+            branchCache[b.name.trim() + '_' + b.entity_id] = b.id;
+        });
+        
+        const projectsList = db.getProjects(req.user.id);
+        const projectCache = {};
+        projectsList.forEach(p => {
+            projectCache[p.name.trim() + '_' + (p.branch_id || p.entity_id || '')] = p.id;
+        });
+
+        // Date formatter helper
+        function formatExcelDate(val) {
+            if (!val) return '';
+            if (val instanceof Date) {
+                return val.toISOString().split('T')[0];
+            }
+            if (typeof val === 'number') {
+                const date = new Date(Math.round((val - 25569) * 86400 * 1000));
+                return date.toISOString().split('T')[0];
+            }
+            return val.toString().trim();
+        }
+        
+        for (const row of metadataRows) {
             const code = row['الرقم الوظيفي'] || row['الرقم'] || row['employee_code'] || row['code'] || row['ID'];
             const name = row['اسم الموظف'] || row['أسم الموظف'] || row['الاسم'] || row['name'] || row['employee_name'];
+            
+            // Skip headers or empty rows
+            if (!code || !name || code.toString().trim() === 'م' || code.toString().trim() === 'الرقم الوظيفي') {
+                skipCount++;
+                continue;
+            }
+            
+            const cleanCode = code.toString().trim();
+            const salaryRow = salaryMap[cleanCode] || {};
+            const costRow = extraCostsMap[cleanCode] || {};
+            
             const nationality = row['الجنسية'] || row['nationality'] || 'سعودي';
             const gender = row['النوع'] || row['الجنس'] || row['gender'] || 'ذكر';
             const status = row['حالة الموظف'] || row['الحالة'] || row['status'] || 'على رأس العمل';
-            const projectName = row['المشروع'] || row['الموقع'] || row['القسم'] || row['project'] || row['location'];
-            const companyName = row['الشركة'] || row['الكيان'] || row['company'] || row['entity'];
+            const hireDate = formatExcelDate(row['تاريخ بداية العمل']);
             
-            const basic = Number(row['الراتب الأساسي'] || row['الراتب'] || row['الراتب '] || row['basic_salary'] || row['salary'] || 0);
-            const housing = Number(row['بدل السكن'] || row['بدل سكن'] || row['housing_allowance'] || row['housing'] || 0);
-            const trans = Number(row['بدل الانتقال'] || row['بدل انتقال'] || row['transportation_allowance'] || row['trans'] || 0);
-            const living = Number(row['بدل معيشة'] || row['بدل المعيشة'] || row['living_allowance'] || row['living'] || 0);
-            const other = Number(row['بدلات أخرى'] || row['بدل آخر'] || row['other_allowances'] || row['other'] || 0);
+            const rawLegalEntityName = row['اسم الشركة'] || salaryRow['الشركة'] || row['الشركة'] || 'شركة ريال البركة للتجارة';
+            const legalEntityName = rawLegalEntityName.toString().trim();
+            const unifiedNumber = row['الالرقم 700'] || row['الرقم 700'] || '';
             
-            const medical = Number(row['التأمين الطبي'] || row['التأمين الطبي '] || row['التأمين'] || row['medical_insurance'] || row['medical'] || 0);
-            const healthCert = Number(row['الشهادة الصحية'] || row['health_certificate'] || 0);
-            const exitReentry = Number(row['تأشيرة الخروج والعودة'] || row['exit_reentry'] || 0);
+            const rawBranchName = row['الكيان'] || 'جملة ريال البركة';
+            const branchName = rawBranchName.toString().trim();
             
-            if (!code || !name) {
-                skipCount++;
-                continue; // ID and Name are critical
-            }
+            const rawProjectName = row['المشروع'] || row['الموقع'] || 'الإدارة العامة';
+            const projectName = rawProjectName.toString().trim();
             
-            // Resolve project ID
-            let projectId = null;
-            if (projectName && projectName.toString().trim()) {
-                const cleanProjName = projectName.toString().trim();
-                if (projectCache[cleanProjName]) {
-                    projectId = projectCache[cleanProjName];
-                } else {
-                    // Create new project
-                    const projResult = db.createProject(req.user.id, cleanProjName);
-                    projectId = projResult.lastID;
-                    projectCache[cleanProjName] = projectId;
-                }
-            }
-
-            // Resolve entity ID
+            // Financial calculations (from salaries sheet or fallback)
+            const basic = Number(salaryRow['الراتب الأساسي'] || row['الراتب الأساسي'] || 0);
+            const housing = Number(salaryRow['بدل السكن'] || row['بدل السكن'] || 0);
+            const trans = Number(salaryRow['بدل الانتقال'] || salaryRow['بدل انتقال'] || row['بدل الانتقال'] || 0);
+            const living = Number(salaryRow['بدل معيشة'] || salaryRow['بدل المعيشة'] || row['بدل معيشة'] || 0);
+            const other = Number(salaryRow['بدلات أخرى'] || salaryRow['بدل آخر'] || row['بدلات أخرى'] || 0);
+            
+            const medical = Number(costRow['التأمين الطبي'] || costRow['التأمين الطبي '] || row['التأمين الطبي'] || 0);
+            const healthCert = Number(costRow['الشهادة الصحية'] || row['الشهادة الصحية'] || 0);
+            const exitReentry = Number(costRow['تأشيرة الخروج والعودة'] || costRow['تأشيرة الخروج والعودة '] || row['تأشيرة الخروج والعودة'] || 0);
+            
+            // 1. Resolve Legal Entity (الكيان الكبير)
             let entityId = null;
-            if (companyName && companyName.toString().trim()) {
-                const cleanCompanyName = companyName.toString().trim();
-                if (entityCache[cleanCompanyName]) {
-                    entityId = entityCache[cleanCompanyName];
+            if (entityCache[legalEntityName]) {
+                entityId = entityCache[legalEntityName];
+            } else {
+                const entRes = db.createEntity(req.user.id, legalEntityName, unifiedNumber);
+                entityId = entRes.lastID;
+                entityCache[legalEntityName] = entityId;
+            }
+            
+            // 2. Resolve Branch (الفرع) linked to Legal Entity
+            let branchId = null;
+            const branchKey = branchName + '_' + entityId;
+            if (branchCache[branchKey]) {
+                branchId = branchCache[branchKey];
+            } else {
+                const brRes = db.createBranch(req.user.id, branchName, '', entityId);
+                branchId = brRes.lastID;
+                branchCache[branchKey] = branchId;
+            }
+            
+            // 3. Resolve Project (المشروع) linked to Branch
+            let projectId = null;
+            const projectKey = projectName + '_' + branchId;
+            if (projectCache[projectKey]) {
+                projectId = projectCache[projectKey];
+            } else {
+                const projRes = db.createProject(req.user.id, projectName, entityId, branchId);
+                projectId = projRes.lastID;
+                projectCache[projectKey] = projectId;
+            }
+            
+            // Resolve Saudi Type
+            let saudiType = null;
+            if (nationality.trim() === 'سعودي') {
+                const jobTitle = (row['المسمي الوظيفي'] || '').toString().toLowerCase();
+                if (jobTitle.includes('سعودة') || jobTitle.includes('دعم نشاط') || basic <= 2000) {
+                    saudiType = 'support';
                 } else {
-                    // Create new entity
-                    const entResult = db.createEntity(req.user.id, cleanCompanyName, 0);
-                    entityId = entResult.lastID;
-                    entityCache[cleanCompanyName] = entityId;
+                    saudiType = 'working';
                 }
             }
             
             // Insert or Update Employee
-            const existingEmp = db.getEmployeesDetailed(req.user.id).find(e => e.employee_code.toString().trim() === code.toString().trim());
+            const employeesList = db.getEmployeesDetailed(req.user.id);
+            const existingEmp = employeesList.find(e => e.employee_code.toString().trim() === cleanCode);
+            
+            const payload = {
+                employee_code: cleanCode,
+                name,
+                nationality,
+                gender,
+                status,
+                branch_id: branchId,
+                cost_branch_id: branchId,
+                project_id: projectId,
+                basic_salary: basic,
+                housing_allowance: housing,
+                transportation_allowance: trans,
+                living_allowance: living,
+                other_allowances: other,
+                medical_insurance_monthly: medical,
+                health_certificate_monthly: healthCert,
+                exit_reentry_monthly: exitReentry,
+                saudi_type: saudiType,
+                hire_date: hireDate
+            };
             
             if (existingEmp) {
-                const empId = existingEmp.id;
-                db.updateEmployee(req.user.id, empId, {
-                    employee_code: code,
-                    name,
-                    nationality,
-                    gender,
-                    status,
-                    project_id: projectId,
-                    entity_id: entityId,
-                    basic_salary: basic,
-                    housing_allowance: housing,
-                    transportation_allowance: trans,
-                    living_allowance: living,
-                    other_allowances: other,
-                    medical_insurance_monthly: medical,
-                    health_certificate_monthly: healthCert,
-                    exit_reentry_monthly: exitReentry
-                });
+                db.updateEmployee(req.user.id, existingEmp.id, payload);
             } else {
-                db.createEmployee(req.user.id, {
-                    employee_code: code,
-                    name,
-                    nationality,
-                    gender,
-                    status,
-                    project_id: projectId,
-                    entity_id: entityId,
-                    basic_salary: basic,
-                    housing_allowance: housing,
-                    transportation_allowance: trans,
-                    living_allowance: living,
-                    other_allowances: other,
-                    medical_insurance_monthly: medical,
-                    health_certificate_monthly: healthCert,
-                    exit_reentry_monthly: exitReentry
-                });
+                db.createEmployee(req.user.id, payload);
             }
             
             successCount++;
         }
         
         fs.unlinkSync(filePath); // delete temp file
-        res.json({ message: 'تم استيراد الملف بنجاح', successCount, skipCount });
+        res.json({ message: 'تم استيراد كشف الموظفين بنجاح ومطابقته مع الرواتب والتكاليف السحابية', successCount, skipCount });
     } catch (err) {
         if (fs.existsSync(filePath)) {
             fs.unlinkSync(filePath);

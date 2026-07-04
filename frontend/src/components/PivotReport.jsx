@@ -1,14 +1,28 @@
-import React from 'react';
-import { FileSpreadsheet, Download } from 'lucide-react';
+import React, { useState } from 'react';
+import { FileSpreadsheet, Download, Sliders } from 'lucide-react';
 
-export default function PivotReport({ employees, summary }) {
+export default function PivotReport({ employees = [], summary, entities = [], branches = [], projects = [] }) {
+    const [filterEntity, setFilterEntity] = useState('');
+    const [filterBranch, setFilterBranch] = useState('');
+    const [filterCostBranch, setFilterCostBranch] = useState('');
+    const [filterProject, setFilterProject] = useState('');
+
     if (!employees || employees.length === 0) {
-        return <div style={{ padding: '40px', textAlign: 'center' }}>لا توجد بيانات موظفين لعرض التقارير...</div>;
+        return <div style={{ padding: '40px', textAlign: 'center' }}>لا توجد سجلات موظفين لعرض التقرير مجمّعاً...</div>;
     }
 
-    // Group employees by project
+    // 1. Filter employees based on active dropdown selections
+    const filteredEmployees = employees.filter(emp => {
+        const matchesEntity = !filterEntity || emp.legal_entity_id === Number(filterEntity);
+        const matchesBranch = !filterBranch || emp.branch_id === Number(filterBranch);
+        const matchesCostBranch = !filterCostBranch || emp.cost_branch_id === Number(filterCostBranch);
+        const matchesProject = !filterProject || emp.project_id === Number(filterProject);
+        return matchesEntity && matchesBranch && matchesCostBranch && matchesProject;
+    });
+
+    // 2. Group filtered employees by project
     const projectMap = {};
-    employees.forEach(emp => {
+    filteredEmployees.forEach(emp => {
         const projName = emp.project_name || 'غير محدد';
         if (!projectMap[projName]) {
             projectMap[projName] = {
@@ -47,7 +61,7 @@ export default function PivotReport({ employees, summary }) {
 
     const projectsList = Object.values(projectMap).sort((a, b) => b.total_monthly_cost - a.total_monthly_cost);
 
-    // Calculate Grand Totals
+    // 3. Calculate Grand Totals
     const grandTotal = {
         gross_salary: 0,
         gosi: 0,
@@ -83,7 +97,7 @@ export default function PivotReport({ employees, summary }) {
     // CSV Export function
     const exportToCSV = () => {
         const headers = [
-            'المشروع/الفرع', 'مجموع الرواتب والبدلات', 'مجموع التأمينات الاجتماعية', 
+            'المشروع', 'مجموع الرواتب والبدلات', 'مجموع التأمينات الاجتماعية', 
             'مجموع التأمين الطبي', 'مجموع الشهادات الصحية', 'مجموع مخصص الإجازة', 
             'مجموع نهاية الخدمة', 'مجموع مخصص التذاكر', 'مجموع رسوم الجوازات', 
             'مجموع رخص العمل', 'مجموع تأشيرات الخروج والعودة', 'مجموع عبء السعودة',
@@ -116,7 +130,7 @@ export default function PivotReport({ employees, summary }) {
         const encodedUri = encodeURI(csvContent);
         const link = document.createElement("a");
         link.setAttribute("href", encodedUri);
-        link.setAttribute("download", `تقرير_تكاليف_المشاريع_2026.csv`);
+        link.setAttribute("download", `تقرير_تكاليف_المشاريع_المفلترة_2026.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -128,12 +142,52 @@ export default function PivotReport({ employees, summary }) {
                 <h2>تقرير تجميع التكاليف حسب المشاريع والفروع</h2>
                 <button className="btn btn-secondary" onClick={exportToCSV}>
                     <Download className="menu-item-icon" />
-                    تصدير التقرير (CSV)
+                    تصدير التقرير المفلتر (CSV)
                 </button>
             </div>
 
+            {/* Top Interactive Filters for Pivot */}
+            <div className="glass-panel" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '24px' }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label>تصفية بالكيان القانوني</label>
+                    <select className="form-control" value={filterEntity} onChange={(e) => setFilterEntity(e.target.value)}>
+                        <option value="">كل الكيانات القانونية</option>
+                        {entities.map(e => (
+                            <option key={e.id} value={e.id}>{e.name}</option>
+                        ))}
+                    </select>
+                </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label>الفرع القانوني (التأمينات)</label>
+                    <select className="form-control" value={filterBranch} onChange={(e) => setFilterBranch(e.target.value)}>
+                        <option value="">كل الفروع القانونية</option>
+                        {branches.map(b => (
+                            <option key={b.id} value={b.id}>{b.name}</option>
+                        ))}
+                    </select>
+                </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label>الفرع المالي (المصاريف)</label>
+                    <select className="form-control" value={filterCostBranch} onChange={(e) => setFilterCostBranch(e.target.value)}>
+                        <option value="">كل الفروع المالية</option>
+                        {branches.map(b => (
+                            <option key={b.id} value={b.id}>{b.name}</option>
+                        ))}
+                    </select>
+                </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label>المشروع</label>
+                    <select className="form-control" value={filterProject} onChange={(e) => setFilterProject(e.target.value)}>
+                        <option value="">كل المشاريع</option>
+                        {projects.map(p => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                    </select>
+                </div>
+            </div>
+
             <div className="glass-panel" style={{ padding: '0px' }}>
-                <div className="table-container" style={{ margin: '0px', maxHeight: '70vh' }}>
+                <div className="table-container" style={{ margin: '0px', maxHeight: '60vh' }}>
                     <table className="data-table">
                         <thead>
                             <tr>

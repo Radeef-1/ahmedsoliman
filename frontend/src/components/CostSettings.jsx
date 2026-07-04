@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Settings, Save, AlertCircle, Building } from 'lucide-react';
-const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '' : 'http://localhost:5000');
 
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '' : 'http://localhost:5000');
 
 export default function CostSettings({ token, company, onCompanyUpdate, onSettingsUpdated, onUnauthorized }) {
     const [settings, setSettings] = useState({
@@ -10,7 +10,9 @@ export default function CostSettings({ token, company, onCompanyUpdate, onSettin
         ticket_annual_cost: 900.0,
         passport_annual_fee: 650.0,
         work_permit_annual_fee: 9700.0,
-        vacation_days_per_year: 21
+        vacation_days_per_year: 21,
+        unified_number: '',
+        cr_number: ''
     });
 
     const [companyName, setCompanyName] = useState(company?.name || '');
@@ -34,7 +36,11 @@ export default function CostSettings({ token, company, onCompanyUpdate, onSettin
             }
             const data = await response.json();
             if (response.ok && data) {
-                setSettings(data);
+                setSettings({
+                    ...data,
+                    unified_number: data.unified_number || '',
+                    cr_number: data.cr_number || ''
+                });
             } else {
                 throw new Error(data.error || 'فشل جلب الإعدادات');
             }
@@ -111,7 +117,7 @@ export default function CostSettings({ token, company, onCompanyUpdate, onSettin
     const handleInputChange = (key, val) => {
         setSettings(prev => ({
             ...prev,
-            [key]: Number(val)
+            [key]: (key === 'unified_number' || key === 'cr_number') ? val : Number(val)
         }));
     };
 
@@ -128,10 +134,10 @@ export default function CostSettings({ token, company, onCompanyUpdate, onSettin
                 {/* Section 1: Company Profile Info */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
                     <Building className="menu-item-icon" style={{ color: 'var(--primary)' }} />
-                    <h3>الملف الشخصي واسم المنشأة</h3>
+                    <h3>الملف الشخصي المنشأة الرئيسي</h3>
                 </div>
                 
-                <div className="form-group" style={{ marginBottom: '32px' }}>
+                <div className="form-group" style={{ marginBottom: '16px' }}>
                     <label>اسم المستخدم الحالي / اسم الشركة</label>
                     <input
                         type="text"
@@ -142,6 +148,29 @@ export default function CostSettings({ token, company, onCompanyUpdate, onSettin
                         required
                     />
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>يظهر هذا الاسم في القائمة الجانبية للتطبيق وفي التقارير المالية</span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '32px' }}>
+                    <div className="form-group">
+                        <label>الرقم الموحد الرئيسي للمجموعة (700)</label>
+                        <input
+                            type="text"
+                            className="form-control"
+                            value={settings.unified_number || ''}
+                            onChange={(e) => handleInputChange('unified_number', e.target.value)}
+                            placeholder="7014477116"
+                        />
+                    </div>
+                    <div className="form-group">
+                        <label>رقم السجل التجاري الرئيسي للشركة</label>
+                        <input
+                            type="text"
+                            className="form-control"
+                            value={settings.cr_number || ''}
+                            onChange={(e) => handleInputChange('cr_number', e.target.value)}
+                            placeholder="1010000000"
+                        />
+                    </div>
                 </div>
 
                 {/* Section 2: Financial Settings */}

@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
-import { Plus, Search, Edit2, Trash2, X } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Plus, Search, Edit2, Trash2, X, Calendar, Briefcase, Award } from 'lucide-react';
+
 const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '' : 'http://localhost:5000');
 
-
-export default function EmployeesList({ token, projects, entities = [], employees, onDataChange, onUnauthorized }) {
+export default function EmployeesList({ token, projects = [], entities = [], branches = [], employees, onDataChange, onUnauthorized }) {
     const [search, setSearch] = useState('');
-    const [filterProject, setFilterProject] = useState('');
     const [filterEntity, setFilterEntity] = useState('');
+    const [filterBranch, setFilterBranch] = useState('');
+    const [filterCostBranch, setFilterCostBranch] = useState('');
+    const [filterProject, setFilterProject] = useState('');
     const [filterNationality, setFilterNationality] = useState('');
     const [filterStatus, setFilterStatus] = useState('');
     
@@ -23,13 +25,19 @@ export default function EmployeesList({ token, projects, entities = [], employee
     const [nationality, setNationality] = useState('سعودي');
     const [gender, setGender] = useState('ذكر');
     const [status, setStatus] = useState('على رأس العمل');
+    
+    const [branchId, setBranchId] = useState('');
+    const [costBranchId, setCostBranchId] = useState('');
     const [projectId, setProjectId] = useState('');
-    const [entityId, setEntityId] = useState('');
+    const [saudiType, setSaudiType] = useState('working');
+    const [hireDate, setHireDate] = useState('');
+
     const [basicSalary, setBasicSalary] = useState('');
     const [housingAllowance, setHousingAllowance] = useState('');
     const [transportationAllowance, setTransportationAllowance] = useState('');
     const [livingAllowance, setLivingAllowance] = useState('');
     const [otherAllowances, setOtherAllowances] = useState('');
+    
     const [medicalInsurance, setMedicalInsurance] = useState('');
     const [healthCertificate, setHealthCertificate] = useState('');
     const [exitReentry, setExitReentry] = useState('');
@@ -42,6 +50,20 @@ export default function EmployeesList({ token, projects, entities = [], employee
 
     const isCurrentSaudi = localIsSaudi(nationality);
 
+    // Filter projects dynamically in form based on cost branch selection
+    const formFilteredProjects = projects.filter(p => {
+        if (!costBranchId) return true; // show all if no branch is selected
+        return Number(p.branch_id) === Number(costBranchId) || p.branch_id === null;
+    });
+
+    // Auto-update cost branch when legal branch changes (if they haven't set it yet)
+    const handleLegalBranchChange = (val) => {
+        setBranchId(val);
+        if (!costBranchId || costBranchId === branchId) {
+            setCostBranchId(val);
+        }
+    };
+
     const openAddModal = () => {
         setEditMode(false);
         setSelectedEmpId(null);
@@ -53,8 +75,12 @@ export default function EmployeesList({ token, projects, entities = [], employee
         setNationality('سعودي');
         setGender('ذكر');
         setStatus('على رأس العمل');
-        setProjectId(projects.length > 0 ? projects[0].id : '');
-        setEntityId(entities.length > 0 ? entities[0].id : '');
+        setBranchId(branches.length > 0 ? branches[0].id : '');
+        setCostBranchId(branches.length > 0 ? branches[0].id : '');
+        setProjectId('');
+        setSaudiType('working');
+        setHireDate('');
+        
         setBasicSalary('');
         setHousingAllowance('');
         setTransportationAllowance('');
@@ -78,8 +104,13 @@ export default function EmployeesList({ token, projects, entities = [], employee
         setNationality(emp.nationality || 'سعودي');
         setGender(emp.gender || 'ذكر');
         setStatus(emp.status || 'على رأس العمل');
+        
+        setBranchId(emp.branch_id || '');
+        setCostBranchId(emp.cost_branch_id || emp.branch_id || '');
         setProjectId(emp.project_id || '');
-        setEntityId(emp.entity_id || '');
+        setSaudiType(emp.saudi_type || 'working');
+        setHireDate(emp.hire_date || '');
+
         setBasicSalary(emp.basic_salary || '');
         setHousingAllowance(emp.housing_allowance || '');
         setTransportationAllowance(emp.transportation_allowance || '');
@@ -124,8 +155,11 @@ export default function EmployeesList({ token, projects, entities = [], employee
             nationality,
             gender,
             status,
+            branch_id: branchId ? Number(branchId) : null,
+            cost_branch_id: costBranchId ? Number(costBranchId) : (branchId ? Number(branchId) : null),
             project_id: projectId ? Number(projectId) : null,
-            entity_id: entityId ? Number(entityId) : null,
+            saudi_type: localIsSaudi(nationality) ? saudiType : null,
+            hire_date: hireDate,
             basic_salary: Number(basicSalary || 0),
             housing_allowance: Number(housingAllowance || 0),
             transportation_allowance: Number(transportationAllowance || 0),
@@ -175,8 +209,10 @@ export default function EmployeesList({ token, projects, entities = [], employee
     const filtered = employees.filter(emp => {
         const matchesSearch = emp.name.toLowerCase().includes(search.toLowerCase()) || 
                               emp.employee_code.toString().includes(search);
+        const matchesEntity = !filterEntity || emp.legal_entity_id === Number(filterEntity);
+        const matchesBranch = !filterBranch || emp.branch_id === Number(filterBranch);
+        const matchesCostBranch = !filterCostBranch || emp.cost_branch_id === Number(filterCostBranch);
         const matchesProject = !filterProject || emp.project_id === Number(filterProject);
-        const matchesEntity = !filterEntity || emp.entity_id === Number(filterEntity);
         const matchesStatus = !filterStatus || emp.status === filterStatus;
         
         let matchesNationality = true;
@@ -186,7 +222,7 @@ export default function EmployeesList({ token, projects, entities = [], employee
             matchesNationality = !localIsSaudi(emp.nationality);
         }
         
-        return matchesSearch && matchesProject && matchesEntity && matchesStatus && matchesNationality;
+        return matchesSearch && matchesEntity && matchesBranch && matchesCostBranch && matchesProject && matchesStatus && matchesNationality;
     });
 
     return (
@@ -199,11 +235,11 @@ export default function EmployeesList({ token, projects, entities = [], employee
                 </button>
             </div>
 
-            {/* Filters Dashboard */}
-            <div className="glass-panel" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+            {/* Comprehensive Filters Dashboard */}
+            <div className="glass-panel" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '24px' }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Search style={{ width: '16px' }} /> بحث بالاسم أو الكود
+                        <Search style={{ width: '14px' }} /> الاسم أو الرقم الوظيفي
                     </label>
                     <input 
                         type="text" 
@@ -215,13 +251,13 @@ export default function EmployeesList({ token, projects, entities = [], employee
                 </div>
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label>تصفية بالشركة / الكيان</label>
+                    <label>الكيان القانوني</label>
                     <select 
                         className="form-control" 
                         value={filterEntity}
                         onChange={(e) => setFilterEntity(e.target.value)}
                     >
-                        <option value="">كل الشركات والكيانات</option>
+                        <option value="">جميع الكيانات الكبرى</option>
                         {entities.map(ent => (
                             <option key={ent.id} value={ent.id}>{ent.name}</option>
                         ))}
@@ -229,13 +265,41 @@ export default function EmployeesList({ token, projects, entities = [], employee
                 </div>
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label>تصفية بالمشروع / الفرع</label>
+                    <label>الفرع القانوني (التأمينات)</label>
+                    <select 
+                        className="form-control" 
+                        value={filterBranch}
+                        onChange={(e) => setFilterBranch(e.target.value)}
+                    >
+                        <option value="">جميع الفروع القانونية</option>
+                        {branches.map(br => (
+                            <option key={br.id} value={br.id}>{br.name}</option>
+                        ))}
+                    </select>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label>الفرع المالي (التكلفة)</label>
+                    <select 
+                        className="form-control" 
+                        value={filterCostBranch}
+                        onChange={(e) => setFilterCostBranch(e.target.value)}
+                    >
+                        <option value="">جميع الفروع المالية</option>
+                        {branches.map(br => (
+                            <option key={br.id} value={br.id}>{br.name}</option>
+                        ))}
+                    </select>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label>المشروع</label>
                     <select 
                         className="form-control" 
                         value={filterProject}
                         onChange={(e) => setFilterProject(e.target.value)}
                     >
-                        <option value="">كل الفروع والمشاريع</option>
+                        <option value="">جميع المشاريع</option>
                         {projects.map(p => (
                             <option key={p.id} value={p.id}>{p.name}</option>
                         ))}
@@ -243,7 +307,7 @@ export default function EmployeesList({ token, projects, entities = [], employee
                 </div>
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label>تصفية بتصنيف الإقامة</label>
+                    <label>الجنسية</label>
                     <select 
                         className="form-control" 
                         value={filterNationality}
@@ -251,12 +315,12 @@ export default function EmployeesList({ token, projects, entities = [], employee
                     >
                         <option value="">جميع الجنسيات</option>
                         <option value="سعودي">سعوديين</option>
-                        <option value="مقيم">مقيمين (غير سعوديين)</option>
+                        <option value="مقيم">مقيمين</option>
                     </select>
                 </div>
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label>تصفية بالحالة</label>
+                    <label>الحالة</label>
                     <select 
                         className="form-control" 
                         value={filterStatus}
@@ -278,13 +342,14 @@ export default function EmployeesList({ token, projects, entities = [], employee
                             <tr>
                                 <th>الرقم الوظيفي</th>
                                 <th>الاسم</th>
-                                <th>الجنسية</th>
-                                <th>النوع</th>
-                                <th>الشركة/الكيان</th>
-                                <th>المشروع/الفرع</th>
+                                <th>الجنسية والتصنيف</th>
+                                <th>الفرع القانوني (التأمينات)</th>
+                                <th>الفرع المالي (المصاريف)</th>
+                                <th>المشروع</th>
+                                <th>المباشرة</th>
                                 <th>الراتب الأساسي</th>
                                 <th>إجمالي البدلات</th>
-                                <th>التكلفة الشهرية الكلية</th>
+                                <th>التكلفة الكلية</th>
                                 <th>الحالة</th>
                                 <th>خيارات</th>
                             </tr>
@@ -299,14 +364,28 @@ export default function EmployeesList({ token, projects, entities = [], employee
                                 return (
                                     <tr key={emp.id}>
                                         <td style={{ fontWeight: '600' }}>{emp.employee_code}</td>
-                                        <td>{emp.name}</td>
-                                        <td>{emp.nationality}</td>
-                                        <td>{emp.gender}</td>
-                                        <td style={{ fontWeight: '500', color: 'var(--info)' }}>{emp.entity_name}</td>
+                                        <td>
+                                            <div style={{ fontWeight: '600' }}>{emp.name}</div>
+                                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{emp.gender}</span>
+                                        </td>
+                                        <td>
+                                            <div>{emp.nationality}</div>
+                                            {isEmpSaudi && (
+                                                <span className={`badge ${emp.saudi_type === 'working' ? 'badge-info' : 'badge-warning'}`} style={{ fontSize: '0.65rem', padding: '2px 6px', marginTop: '4px', display: 'inline-block' }}>
+                                                    {emp.saudi_type === 'working' ? 'سعودي عامل' : 'دعم نشاط (سعودة)'}
+                                                </span>
+                                            )}
+                                        </td>
+                                        <td style={{ color: 'var(--info)', fontWeight: '500' }}>
+                                            {emp.legal_branch_name}
+                                            <span style={{ fontSize: '0.7rem', display: 'block', color: 'var(--text-muted)' }}>{emp.legal_entity_name}</span>
+                                        </td>
+                                        <td style={{ color: 'var(--primary)', fontWeight: '500' }}>{emp.cost_branch_name}</td>
                                         <td>{emp.project_name}</td>
+                                        <td style={{ fontSize: '0.8rem' }}>{emp.hire_date || 'غير محدد'}</td>
                                         <td>{(emp.basic_salary || 0).toLocaleString()} ريال</td>
                                         <td>{totalAllowances.toLocaleString()} ريال</td>
-                                        <td style={{ fontWeight: '700', color: '#fff' }}>
+                                        <td style={{ fontWeight: '700', color: 'var(--primary-light)' }}>
                                             {(emp.total_monthly_cost || emp.basic_salary || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} ريال
                                         </td>
                                         <td>
@@ -329,7 +408,7 @@ export default function EmployeesList({ token, projects, entities = [], employee
                             })}
                             {filtered.length === 0 && (
                                 <tr>
-                                    <td colSpan="11" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                                    <td colSpan="12" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
                                         لا توجد نتائج بحث مطابقة
                                     </td>
                                 </tr>
@@ -342,7 +421,7 @@ export default function EmployeesList({ token, projects, entities = [], employee
             {/* Modal Edit/Add Employee */}
             {modalOpen && (
                 <div className="modal-overlay">
-                    <div className="modal-content glass-panel">
+                    <div className="modal-content glass-panel" style={{ width: '700px', maxHeight: '90vh', overflowY: 'auto' }}>
                         <div className="modal-header">
                             <h3>{editMode ? 'تعديل بيانات الموظف' : 'إضافة موظف جديد'}</h3>
                             <button className="btn btn-secondary" style={{ padding: '6px' }} onClick={() => setModalOpen(false)}>
@@ -353,7 +432,7 @@ export default function EmployeesList({ token, projects, entities = [], employee
                         {error && <div className="badge badge-danger" style={{ display: 'block', textAlign: 'center', marginBottom: '20px', padding: '10px' }}>{error}</div>}
 
                         <form onSubmit={handleFormSubmit}>
-                            <h4 style={{ marginBottom: '16px', color: 'var(--primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px' }}>البيانات الأساسية</h4>
+                            <h4 style={{ marginBottom: '16px', color: 'var(--primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px' }}>البيانات الشخصية والتعيين</h4>
                             <div className="form-grid">
                                 <div className="form-group">
                                     <label>الرقم الوظيفي *</label>
@@ -398,23 +477,63 @@ export default function EmployeesList({ token, projects, entities = [], employee
                                     </select>
                                 </div>
                                 
+                                {isCurrentSaudi && (
+                                    <div className="form-group">
+                                        <label>تصنيف التوطين *</label>
+                                        <select 
+                                            className="form-control"
+                                            value={saudiType}
+                                            onChange={(e) => setSaudiType(e.target.value)}
+                                            required
+                                        >
+                                            <option value="working">سعودي عامل (فعلي)</option>
+                                            <option value="support">دعم نشاط (سعودة فقط)</option>
+                                        </select>
+                                    </div>
+                                )}
+
                                 <div className="form-group">
-                                    <label>الشركة / الكيان *</label>
+                                    <label>تاريخ مباشرة العمل</label>
+                                    <input 
+                                        type="date" 
+                                        className="form-control" 
+                                        value={hireDate}
+                                        onChange={(e) => setHireDate(e.target.value)}
+                                    />
+                                </div>
+
+                                <div className="form-group">
+                                    <label>الفرع القانوني (التأمينات الاجتماعية) *</label>
                                     <select 
                                         className="form-control"
-                                        value={entityId}
-                                        onChange={(e) => setEntityId(e.target.value)}
+                                        value={branchId}
+                                        onChange={(e) => handleLegalBranchChange(e.target.value)}
                                         required
                                     >
-                                        <option value="">اختر الكيان...</option>
-                                        {entities.map(ent => (
-                                            <option key={ent.id} value={ent.id}>{ent.name}</option>
+                                        <option value="">اختر الفرع القانوني...</option>
+                                        {branches.map(br => (
+                                            <option key={br.id} value={br.id}>{br.name} (تابع لـ: {entities.find(e => e.id === br.entity_id)?.name})</option>
                                         ))}
                                     </select>
                                 </div>
 
                                 <div className="form-group">
-                                    <label>المشروع / الفرع *</label>
+                                    <label>الفرع المالي (توزيع المصاريف) *</label>
+                                    <select 
+                                        className="form-control"
+                                        value={costBranchId}
+                                        onChange={(e) => setCostBranchId(e.target.value)}
+                                        required
+                                    >
+                                        <option value="">اختر فرع التكلفة...</option>
+                                        {branches.map(br => (
+                                            <option key={br.id} value={br.id}>{br.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="form-group">
+                                    <label>المشروع المنسب له *</label>
                                     <select 
                                         className="form-control"
                                         value={projectId}
@@ -422,18 +541,19 @@ export default function EmployeesList({ token, projects, entities = [], employee
                                         required
                                     >
                                         <option value="">اختر المشروع...</option>
-                                        {projects.map(p => (
+                                        {formFilteredProjects.map(p => (
                                             <option key={p.id} value={p.id}>{p.name}</option>
                                         ))}
                                     </select>
                                 </div>
 
-                                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                                    <label>الحالة الوظيفية</label>
+                                <div className="form-group">
+                                    <label>الحالة الوظيفية *</label>
                                     <select 
                                         className="form-control"
                                         value={status}
                                         onChange={(e) => setStatus(e.target.value)}
+                                        required
                                     >
                                         <option value="على رأس العمل">على رأس العمل</option>
                                         <option value="إجازة">إجازة</option>

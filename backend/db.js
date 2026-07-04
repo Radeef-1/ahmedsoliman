@@ -87,16 +87,20 @@ async function initDatabase() {
                     ticket_annual_cost: 900.0,
                     passport_annual_fee: 650.0,
                     work_permit_annual_fee: 9700.0,
-                    vacation_days_per_year: 21
+                    vacation_days_per_year: 21,
+                    unified_number: '7014477116',
+                    cr_number: '1010000000'
                 }],
-                projects: [{ id: 1, company_id: id, name: 'الإدارة العامة' }],
-                entities: [{ id: 1, company_id: id, name: 'شركة ريال البركة للتجارة', saudization_cost: 54942.25 }],
+                projects: [{ id: 1, company_id: id, name: 'الإدارة العامة', entity_id: 1, branch_id: 1 }],
+                entities: [{ id: 1, company_id: id, name: 'شركة ريال البركة للتجارة', unified_number: '7014477116' }],
+                branches: [{ id: 1, company_id: id, name: 'جملة ريال البركة', cr_number: '1010000000', entity_id: 1 }],
                 employees: [],
                 salaries: [],
                 resident_extra_costs: [],
                 counters: {
                     projects: 1,
                     entities: 1,
+                    branches: 1,
                     employees: 0
                 }
             };
@@ -150,16 +154,20 @@ async function initDatabase() {
                     ticket_annual_cost: 900.0,
                     passport_annual_fee: 650.0,
                     work_permit_annual_fee: 9700.0,
-                    vacation_days_per_year: 21
+                    vacation_days_per_year: 21,
+                    unified_number: '7014477116',
+                    cr_number: '1010000000'
                 }],
-                projects: [{ id: 1, company_id: id, name: 'الإدارة العامة' }],
-                entities: [{ id: 1, company_id: id, name: 'شركة ريال البركة للتجارة', saudization_cost: 54942.25 }],
+                projects: [{ id: 1, company_id: id, name: 'الإدارة العامة', entity_id: 1, branch_id: 1 }],
+                entities: [{ id: 1, company_id: id, name: 'شركة ريال البركة للتجارة', unified_number: '7014477116' }],
+                branches: [{ id: 1, company_id: id, name: 'جملة ريال البركة', cr_number: '1010000000', entity_id: 1 }],
                 employees: [],
                 salaries: [],
                 resident_extra_costs: [],
                 counters: {
                     projects: 1,
                     entities: 1,
+                    branches: 1,
                     employees: 0
                 }
             };
@@ -167,20 +175,12 @@ async function initDatabase() {
             console.log("Seeded global database and created isolated database for company 1");
         }
     }
-
-    // Proactive update for name if seeded company had old name
-    const defaultComp = globalData.companies.find(c => c.id === 1 && c.name === "شركة ريال البركة للتجارة");
-    if (defaultComp) {
-        defaultComp.name = "أحمد سليمان - شركة ريال البركة للتجارة";
-        saveGlobalToDisk();
-        console.log("Automatically updated default company name in global index");
-    }
 }
 
 // Save global index to disk/Postgres
 function saveGlobalToDisk() {
     if (usePostgres) {
-        // Handled directly inside createCompany/updateCompanyProfile
+        // Handled directly inside database updates
     } else {
         try {
             fs.writeFileSync(globalDbPath, JSON.stringify(globalData, null, 2), 'utf8');
@@ -203,27 +203,20 @@ function loadCompanyData(companyId) {
         cost_settings: [],
         projects: [],
         entities: [],
+        branches: [],
         employees: [],
         salaries: [],
         resident_extra_costs: [],
         counters: {
             projects: 0,
             entities: 0,
+            branches: 0,
             employees: 0
         }
     };
 
     if (usePostgres) {
-        // Read synchronously from memory (since it's a cache-first system, 
-        // we pre-load when auth details are read, or we block to load it).
-        // Since node-postgres is async, we run a query. To bridge it, we block once:
-        // Wait, to block once we can run a de-facto blocking query using a sync hook, 
-        // but since we pre-load all company data on startup or upon request, we can load it.
-        // Actually, we can fetch all tenants on startup or load a tenant dynamically!
-        // To do it dynamically and safely, we can run a quick async fetch inside login/auth, 
-        // but since the routing uses it, let's load it from memory first.
-        // To populate companyCaches on request, we can load it asynchronously in server.js middleware!
-        // Let's implement that in server.js (preloadCompanyCache middleware)!
+        // Cached database fetch is preloaded via middleware
     } else {
         const filePath = path.join(dbFolder, `company_${cid}.json`);
         if (fs.existsSync(filePath)) {
@@ -237,6 +230,11 @@ function loadCompanyData(companyId) {
             }
         }
     }
+    
+    // Backward-compatibility initializations
+    if (!companyData.branches) companyData.branches = [];
+    if (!companyData.counters) companyData.counters = { projects: 0, entities: 0, branches: 0, employees: 0 };
+    if (companyData.counters.branches === undefined) companyData.counters.branches = companyData.branches.length;
     
     companyCaches[cid] = companyData;
     return companyData;
@@ -261,16 +259,20 @@ async function preloadCompanyCache(companyId) {
                     ticket_annual_cost: 900.0,
                     passport_annual_fee: 650.0,
                     work_permit_annual_fee: 9700.0,
-                    vacation_days_per_year: 21
+                    vacation_days_per_year: 21,
+                    unified_number: '',
+                    cr_number: ''
                 }],
-                projects: [{ id: 1, company_id: cid, name: 'الإدارة العامة' }],
-                entities: [{ id: 1, company_id: cid, name: 'الشركة الافتراضية', saudization_cost: 0.0 }],
+                projects: [{ id: 1, company_id: cid, name: 'الإدارة العامة', entity_id: 1, branch_id: 1 }],
+                entities: [{ id: 1, company_id: cid, name: 'الشركة الرئيسية الافتراضية', unified_number: '' }],
+                branches: [{ id: 1, company_id: cid, name: 'الفرع الافتراضي', cr_number: '', entity_id: 1 }],
                 employees: [],
                 salaries: [],
                 resident_extra_costs: [],
                 counters: {
                     projects: 1,
                     entities: 1,
+                    branches: 1,
                     employees: 0
                 }
             };
@@ -285,13 +287,12 @@ async function preloadCompanyCache(companyId) {
     }
 }
 
-// Save company data (writes to memory cache and local disk/Postgres asynchronously)
+// Save company data (writes to memory cache and local disk/Postgres waves)
 function saveCompanyData(companyId, companyData) {
     const cid = Number(companyId);
     companyCaches[cid] = companyData;
     
     if (usePostgres) {
-        // Save to PostgreSQL asynchronously in background (write-through cache)
         pgClient.query(
             "INSERT INTO tenant_store (company_id, data) VALUES ($1, $2) ON CONFLICT (company_id) DO UPDATE SET data = EXCLUDED.data",
             [cid, JSON.stringify(companyData)]
@@ -334,30 +335,31 @@ function createCompany(name, email, password_hash) {
             ticket_annual_cost: 900.0,
             passport_annual_fee: 650.0,
             work_permit_annual_fee: 9700.0,
-            vacation_days_per_year: 21
+            vacation_days_per_year: 21,
+            unified_number: '',
+            cr_number: ''
         }],
-        projects: [{ id: 1, company_id: id, name: 'الإدارة العامة' }],
-        entities: [{ id: 1, company_id: id, name: name, saudization_cost: 0.0 }],
+        projects: [{ id: 1, company_id: id, name: 'الإدارة العامة', entity_id: 1, branch_id: 1 }],
+        entities: [{ id: 1, company_id: id, name: name, unified_number: '' }],
+        branches: [{ id: 1, company_id: id, name: 'الفرع الرئيسي', cr_number: '', entity_id: 1 }],
         employees: [],
         salaries: [],
         resident_extra_costs: [],
         counters: {
             projects: 1,
             entities: 1,
+            branches: 1,
             employees: 0
         }
     };
     
     if (usePostgres) {
-        // Insert into global registry table in Postgres
         pgClient.query(
             "INSERT INTO global_registry (id, name, email, password_hash, created_at) VALUES ($1, $2, $3, $4, $5)",
             [id, company.name, company.email, company.password_hash, company.created_at]
         ).catch(err => {
             console.error("Failed to insert company into Postgres global registry:", err);
         });
-        
-        // Save tenant database
         saveCompanyData(id, companyData);
     } else {
         saveCompanyData(id, companyData);
@@ -392,7 +394,7 @@ function updateCompanyProfile(companyId, name) {
 // ISOLATED TENANT OPERATIONS (Database per tenant)
 // -------------------------------------------------------------
 
-// Cost Settings
+// Cost Settings (Unified Number and CR Number included)
 function getSettings(companyId) {
     const cData = loadCompanyData(companyId);
     let settings = cData.cost_settings.find(s => s.company_id === companyId);
@@ -404,7 +406,9 @@ function getSettings(companyId) {
             ticket_annual_cost: 900.0,
             passport_annual_fee: 650.0,
             work_permit_annual_fee: 9700.0,
-            vacation_days_per_year: 21
+            vacation_days_per_year: 21,
+            unified_number: '',
+            cr_number: ''
         };
         cData.cost_settings.push(settings);
         saveCompanyData(companyId, cData);
@@ -422,7 +426,9 @@ function updateSettings(companyId, settingsData) {
         ticket_annual_cost: Number(settingsData.ticket_annual_cost ?? 900),
         passport_annual_fee: Number(settingsData.passport_annual_fee ?? 650),
         work_permit_annual_fee: Number(settingsData.work_permit_annual_fee ?? 9700),
-        vacation_days_per_year: Number(settingsData.vacation_days_per_year ?? 21)
+        vacation_days_per_year: Number(settingsData.vacation_days_per_year ?? 21),
+        unified_number: (settingsData.unified_number ?? '').toString().trim(),
+        cr_number: (settingsData.cr_number ?? '').toString().trim()
     };
     
     if (idx !== -1) {
@@ -434,49 +440,13 @@ function updateSettings(companyId, settingsData) {
     return true;
 }
 
-// Projects
-function getProjects(companyId) {
-    const cData = loadCompanyData(companyId);
-    return cData.projects;
-}
-
-function createProject(companyId, name) {
-    const cData = loadCompanyData(companyId);
-    cData.counters.projects++;
-    const id = cData.counters.projects;
-    const project = { id, company_id: companyId, name: name.trim() };
-    cData.projects.push(project);
-    saveCompanyData(companyId, cData);
-    return { lastID: id, name: project.name };
-}
-
-function deleteProject(id, companyId) {
-    const projId = Number(id);
-    const cData = loadCompanyData(companyId);
-    const initialLength = cData.projects.length;
-    cData.projects = cData.projects.filter(p => p.id !== projId);
-    
-    if (cData.projects.length !== initialLength) {
-        // Set project_id to null for affected employees
-        cData.employees = cData.employees.map(emp => {
-            if (emp.project_id === projId) {
-                return { ...emp, project_id: null };
-            }
-            return emp;
-        });
-        saveCompanyData(companyId, cData);
-        return true;
-    }
-    return false;
-}
-
-// Entities (Sub-companies)
+// Legal Entities (Unified Number, No manual Saudization cost)
 function getEntities(companyId) {
     const cData = loadCompanyData(companyId);
     return cData.entities;
 }
 
-function createEntity(companyId, name, saudization_cost = 0) {
+function createEntity(companyId, name, unified_number = '') {
     const cData = loadCompanyData(companyId);
     cData.counters.entities++;
     const id = cData.counters.entities;
@@ -484,14 +454,14 @@ function createEntity(companyId, name, saudization_cost = 0) {
         id, 
         company_id: companyId, 
         name: name.trim(), 
-        saudization_cost: Number(saudization_cost || 0) 
+        unified_number: unified_number.toString().trim()
     };
     cData.entities.push(entity);
     saveCompanyData(companyId, cData);
-    return { lastID: id, name: entity.name, saudization_cost: entity.saudization_cost };
+    return { lastID: id, name: entity.name, unified_number: entity.unified_number };
 }
 
-function updateEntity(companyId, id, name, saudization_cost) {
+function updateEntity(companyId, id, name, unified_number) {
     const entId = Number(id);
     const cData = loadCompanyData(companyId);
     const idx = cData.entities.findIndex(e => e.id === entId);
@@ -499,7 +469,7 @@ function updateEntity(companyId, id, name, saudization_cost) {
         cData.entities[idx] = {
             ...cData.entities[idx],
             name: name ? name.trim() : cData.entities[idx].name,
-            saudization_cost: saudization_cost !== undefined ? Number(saudization_cost) : cData.entities[idx].saudization_cost
+            unified_number: unified_number !== undefined ? unified_number.toString().trim() : cData.entities[idx].unified_number
         };
         saveCompanyData(companyId, cData);
         return true;
@@ -510,30 +480,171 @@ function updateEntity(companyId, id, name, saudization_cost) {
 function deleteEntity(id, companyId) {
     const entId = Number(id);
     const cData = loadCompanyData(companyId);
+    
+    // 1. Cascade Protection: Check if any Branch is linked to this Legal Entity
+    const hasBranches = cData.branches.some(b => b.entity_id === entId);
+    if (hasBranches) {
+        throw new Error('لا يمكن حذف الكيان القانوني لوجود فروع تابعة له. يرجى حذف الفروع أو نقلها أولاً.');
+    }
+
+    // 2. Cascade Protection: Check if any project is linked to this entity
+    const hasProjects = cData.projects.some(p => p.entity_id === entId);
+    if (hasProjects) {
+        throw new Error('لا يمكن حذف الكيان القانوني لوجود مشاريع تابعة له مباشرة. يرجى نقل المشاريع أولاً.');
+    }
+
     const initialLength = cData.entities.length;
     cData.entities = cData.entities.filter(e => e.id !== entId);
     
     if (cData.entities.length !== initialLength) {
-        // Set entity_id to null for affected employees
-        cData.employees = cData.employees.map(emp => {
-            if (emp.entity_id === entId) {
-                return { ...emp, entity_id: null };
-            }
-            return emp;
-        });
         saveCompanyData(companyId, cData);
         return true;
     }
     return false;
 }
 
-// Employees detailed list
+// Branches Operations
+function getBranches(companyId) {
+    const cData = loadCompanyData(companyId);
+    return cData.branches;
+}
+
+function createBranch(companyId, name, cr_number = '', entity_id = null) {
+    const cData = loadCompanyData(companyId);
+    cData.counters.branches++;
+    const id = cData.counters.branches;
+    
+    const branch = {
+        id,
+        company_id: companyId,
+        name: name.trim(),
+        cr_number: cr_number.toString().trim(),
+        entity_id: entity_id ? Number(entity_id) : null
+    };
+    cData.branches.push(branch);
+    saveCompanyData(companyId, cData);
+    return { lastID: id, name: branch.name };
+}
+
+function updateBranch(companyId, id, name, cr_number, entity_id) {
+    const brId = Number(id);
+    const cData = loadCompanyData(companyId);
+    const idx = cData.branches.findIndex(b => b.id === brId);
+    if (idx !== -1) {
+        cData.branches[idx] = {
+            ...cData.branches[idx],
+            name: name ? name.trim() : cData.branches[idx].name,
+            cr_number: cr_number !== undefined ? cr_number.toString().trim() : cData.branches[idx].cr_number,
+            entity_id: entity_id !== undefined ? (entity_id ? Number(entity_id) : null) : cData.branches[idx].entity_id
+        };
+        saveCompanyData(companyId, cData);
+        return true;
+    }
+    return false;
+}
+
+function deleteBranch(id, companyId) {
+    const brId = Number(id);
+    const cData = loadCompanyData(companyId);
+
+    // 1. Cascade Protection: Check if any Employee is linked to this branch (legal or cost)
+    const hasEmployees = cData.employees.some(emp => emp.branch_id === brId || emp.cost_branch_id === brId);
+    if (hasEmployees) {
+        throw new Error('لا يمكن حذف هذا الفرع لوجود موظفين مسجلين عليه حالياً (قانونياً أو مالياً).');
+    }
+
+    // 2. Cascade Protection: Check if any Project is linked to this branch
+    const hasProjects = cData.projects.some(p => p.branch_id === brId);
+    if (hasProjects) {
+        throw new Error('لا يمكن حذف هذا الفرع لارتباط مشاريع نشطة به. يرجى نقل المشاريع أولاً.');
+    }
+
+    const initialLength = cData.branches.length;
+    cData.branches = cData.branches.filter(b => b.id !== brId);
+
+    if (cData.branches.length !== initialLength) {
+        saveCompanyData(companyId, cData);
+        return true;
+    }
+    return false;
+}
+
+// Projects (Belongs to Branch or Legal Entity)
+function getProjects(companyId) {
+    const cData = loadCompanyData(companyId);
+    return cData.projects;
+}
+
+function createProject(companyId, name, entity_id = null, branch_id = null) {
+    const cData = loadCompanyData(companyId);
+    cData.counters.projects++;
+    const id = cData.counters.projects;
+    
+    const project = { 
+        id, 
+        company_id: companyId, 
+        name: name.trim(),
+        entity_id: entity_id ? Number(entity_id) : null,
+        branch_id: branch_id ? Number(branch_id) : null
+    };
+    cData.projects.push(project);
+    saveCompanyData(companyId, cData);
+    return { lastID: id, name: project.name };
+}
+
+function updateProject(companyId, id, name, entity_id, branch_id) {
+    const projId = Number(id);
+    const cData = loadCompanyData(companyId);
+    const idx = cData.projects.findIndex(p => p.id === projId);
+    if (idx !== -1) {
+        cData.projects[idx] = {
+            ...cData.projects[idx],
+            name: name ? name.trim() : cData.projects[idx].name,
+            entity_id: entity_id !== undefined ? (entity_id ? Number(entity_id) : null) : cData.projects[idx].entity_id,
+            branch_id: branch_id !== undefined ? (branch_id ? Number(branch_id) : null) : cData.projects[idx].branch_id
+        };
+        saveCompanyData(companyId, cData);
+        return true;
+    }
+    return false;
+}
+
+function deleteProject(id, companyId) {
+    const projId = Number(id);
+    const cData = loadCompanyData(companyId);
+
+    // Cascade Protection: Check if any Employee is linked to this project
+    const hasEmployees = cData.employees.some(emp => emp.project_id === projId);
+    if (hasEmployees) {
+        throw new Error('لا يمكن حذف هذا المشروع لوجود موظفين مسجلين عليه حالياً. يرجى نقلهم أولاً.');
+    }
+
+    const initialLength = cData.projects.length;
+    cData.projects = cData.projects.filter(p => p.id !== projId);
+    
+    if (cData.projects.length !== initialLength) {
+        saveCompanyData(companyId, cData);
+        return true;
+    }
+    return false;
+}
+
+// Employees detailed list (Hierarchical matching included)
 function getEmployeesDetailed(companyId) {
     const cData = loadCompanyData(companyId);
     
     return cData.employees.map(emp => {
+        // Resolve legal branch and cost branch
+        const legalBr = cData.branches.find(b => b.id === emp.branch_id) || null;
+        const costBr = cData.branches.find(b => b.id === emp.cost_branch_id) || null;
+        
+        // Resolve legal entity (derived from legal branch)
+        let legalEnt = null;
+        if (legalBr && legalBr.entity_id) {
+            legalEnt = cData.entities.find(e => e.id === legalBr.entity_id) || null;
+        }
+
         const proj = cData.projects.find(p => p.id === emp.project_id) || null;
-        const ent = cData.entities.find(e => e.id === emp.entity_id) || null;
         const sal = cData.salaries.find(s => s.employee_id === emp.id) || {
             basic_salary: 0, housing_allowance: 0, transportation_allowance: 0, living_allowance: 0, other_allowances: 0
         };
@@ -544,7 +655,10 @@ function getEmployeesDetailed(companyId) {
         return {
             ...emp,
             project_name: proj ? proj.name : 'غير محدد',
-            entity_name: ent ? ent.name : 'غير محدد',
+            legal_branch_name: legalBr ? legalBr.name : 'غير محدد',
+            cost_branch_name: costBr ? costBr.name : 'غير محدد',
+            legal_entity_name: legalEnt ? legalEnt.name : 'غير محدد',
+            legal_entity_id: legalEnt ? legalEnt.id : null,
             basic_salary: sal.basic_salary,
             housing_allowance: sal.housing_allowance,
             transportation_allowance: sal.transportation_allowance,
@@ -557,12 +671,13 @@ function getEmployeesDetailed(companyId) {
     });
 }
 
-// Create employee
+// Create employee (Includes new branch and saudi_type structures)
 function createEmployee(companyId, empData) {
     const { 
-        employee_code, name, nationality, gender, status, project_id, entity_id,
+        employee_code, name, nationality, gender, status, branch_id, cost_branch_id, project_id,
         basic_salary, housing_allowance, transportation_allowance, living_allowance, other_allowances,
-        medical_insurance_monthly, health_certificate_monthly, exit_reentry_monthly
+        medical_insurance_monthly, health_certificate_monthly, exit_reentry_monthly,
+        saudi_type, hire_date
     } = empData;
 
     const cData = loadCompanyData(companyId);
@@ -576,6 +691,10 @@ function createEmployee(companyId, empData) {
     cData.counters.employees++;
     const id = cData.counters.employees;
 
+    // Resolve Legal & Cost Branch IDs
+    const resolvedBranchId = branch_id ? Number(branch_id) : null;
+    const resolvedCostBranchId = cost_branch_id ? Number(cost_branch_id) : resolvedBranchId;
+
     // 1. Employee metadata
     const employee = {
         id,
@@ -585,8 +704,11 @@ function createEmployee(companyId, empData) {
         nationality: nationality.trim(),
         gender: gender.trim(),
         status: status || 'على رأس العمل',
+        branch_id: resolvedBranchId,
+        cost_branch_id: resolvedCostBranchId,
         project_id: project_id ? Number(project_id) : null,
-        entity_id: entity_id ? Number(entity_id) : null
+        saudi_type: nationality.trim() === 'سعودي' ? (saudi_type || 'working') : null,
+        hire_date: hire_date || ''
     };
     cData.employees.push(employee);
 
@@ -614,7 +736,7 @@ function createEmployee(companyId, empData) {
     return { lastID: id };
 }
 
-// Update employee
+// Update employee (Supports cost branch routing and saudi types)
 function updateEmployee(companyId, empId, empData) {
     const id = Number(empId);
     const cData = loadCompanyData(companyId);
@@ -626,9 +748,10 @@ function updateEmployee(companyId, empId, empData) {
     }
 
     const { 
-        employee_code, name, nationality, gender, status, project_id, entity_id,
+        employee_code, name, nationality, gender, status, branch_id, cost_branch_id, project_id,
         basic_salary, housing_allowance, transportation_allowance, living_allowance, other_allowances,
-        medical_insurance_monthly, health_certificate_monthly, exit_reentry_monthly
+        medical_insurance_monthly, health_certificate_monthly, exit_reentry_monthly,
+        saudi_type, hire_date
     } = empData;
 
     // Check UNIQUE code if changed
@@ -642,6 +765,9 @@ function updateEmployee(companyId, empId, empData) {
         }
     }
 
+    const resolvedBranchId = branch_id !== undefined ? (branch_id ? Number(branch_id) : null) : cData.employees[empIdx].branch_id;
+    const resolvedCostBranchId = cost_branch_id !== undefined ? (cost_branch_id ? Number(cost_branch_id) : null) : cData.employees[empIdx].cost_branch_id;
+
     // 1. Update basic details
     cData.employees[empIdx] = {
         ...cData.employees[empIdx],
@@ -650,8 +776,13 @@ function updateEmployee(companyId, empId, empData) {
         nationality: nationality ? nationality.trim() : cData.employees[empIdx].nationality,
         gender: gender ? gender.trim() : cData.employees[empIdx].gender,
         status: status || cData.employees[empIdx].status,
+        branch_id: resolvedBranchId,
+        cost_branch_id: resolvedCostBranchId || resolvedBranchId,
         project_id: project_id !== undefined ? (project_id ? Number(project_id) : null) : cData.employees[empIdx].project_id,
-        entity_id: entity_id !== undefined ? (entity_id ? Number(entity_id) : null) : cData.employees[empIdx].entity_id
+        saudi_type: (nationality || cData.employees[empIdx].nationality) === 'سعودي' 
+            ? (saudi_type || cData.employees[empIdx].saudi_type || 'working') 
+            : null,
+        hire_date: hire_date !== undefined ? hire_date : cData.employees[empIdx].hire_date
     };
 
     // 2. Update salaries
@@ -716,11 +847,16 @@ module.exports = {
     updateSettings,
     getProjects,
     createProject,
+    updateProject,
     deleteProject,
     getEntities,
     createEntity,
     updateEntity,
     deleteEntity,
+    getBranches,
+    createBranch,
+    updateBranch,
+    deleteBranch,
     getEmployeesDetailed,
     createEmployee,
     updateEmployee,

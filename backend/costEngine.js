@@ -70,10 +70,16 @@ function calculateEmployeeCost(emp, settings) {
         nationality: emp.nationality,
         gender: emp.gender,
         status: emp.status,
+        branch_id: emp.branch_id,
+        legal_branch_name: emp.legal_branch_name || 'غير محدد',
+        cost_branch_id: emp.cost_branch_id || emp.branch_id,
+        cost_branch_name: emp.cost_branch_name || emp.legal_branch_name || 'غير محدد',
+        legal_entity_id: emp.legal_entity_id,
+        legal_entity_name: emp.legal_entity_name || 'غير محدد',
         project_id: emp.project_id,
         project_name: emp.project_name || 'غير محدد',
-        entity_id: emp.entity_id,
-        entity_name: emp.entity_name || 'غير محدد',
+        saudi_type: emp.saudi_type || null,
+        hire_date: emp.hire_date || '',
         isSaudi: isEmpSaudi,
         basic_salary: basic,
         housing_allowance: housing,
@@ -101,9 +107,10 @@ function calculateEmployeeCost(emp, settings) {
  * Calculate calculations for the entire company
  */
 function calculateCompanyCosts(companyId) {
-    // 1. Get settings and entities
+    // 1. Get settings, entities and branches
     const settings = db.getSettings(companyId);
     const entities = db.getEntities(companyId);
+    const branches = db.getBranches(companyId);
     if (!settings) {
         throw new Error('Settings not found for this company');
     }
@@ -114,38 +121,15 @@ function calculateCompanyCosts(companyId) {
     // Calculate base cost for all
     const calculated = employees.map(emp => calculateEmployeeCost(emp, settings));
     
-    // 3. Saudization Cost Allocation logic grouped by Entity
-    let totalSaudizationCost = 0;
-    let totalResidentsInEntities = 0;
+    // 3. Automated Saudization Cost Allocation (100% automated based on legal registry)
+    const calculatedSaudis = calculated.filter(e => e.isSaudi);
+    const totalSaudizationCost = calculatedSaudis.reduce((sum, e) => sum + e.base_monthly_cost, 0);
     
-    // Keep track of calculated entities breakdown
-    const entitiesBreakdown = entities.map(ent => {
-        const entEmps = calculated.filter(e => e.entity_id === ent.id);
-        const entSaudis = entEmps.filter(e => e.isSaudi);
-        const entResidents = entEmps.filter(e => !e.isSaudi);
-        
-        let entSaudizationCost = Number(ent.saudization_cost || 0);
-        const calculatedSaudiCost = entSaudis.reduce((sum, e) => sum + e.base_monthly_cost, 0);
-        
-        // If user didn't configure a custom Saudization cost, use the calculated Saudi payroll cost
-        if (entSaudizationCost === 0) {
-            entSaudizationCost = calculatedSaudiCost;
-        }
-        
-        totalSaudizationCost += entSaudizationCost;
-        totalResidentsInEntities += entResidents.length;
-        
-        return {
-            id: ent.id,
-            name: ent.name,
-            total_count: entEmps.length,
-            saudi_count: entSaudis.length,
-            resident_count: entResidents.length,
-            configured_saudization_cost: Number(ent.saudization_cost || 0),
-            calculated_saudi_payroll: calculatedSaudiCost,
-            effective_saudization_cost: entSaudizationCost,
-            burden_per_resident: entResidents.length > 0 ? entSaudizationCost / entResidents.length : 0
-        };
+    // Calculate Saudization cost grouped by Legal Entity (based on legal branch's parent entity)
+    const entitiesSaudizationCost = {};
+    entities.forEach(ent => {
+        const entSaudis = calculatedSaudis.filter(e => e.legal_entity_id === ent.id);
+        entitiesSaudizationCost[ent.id] = entSaudis.reduce((sum, e) => sum + e.base_monthly_cost, 0);
     });
     
     // Calculate weighted average Saudization burden per resident
@@ -169,12 +153,55 @@ function calculateCompanyCosts(companyId) {
         return emp;
     });
     
+    // 4. Compute Legal Entities Breakdown (Compliance view)
+    const entitiesBreakdown = entities.map(ent => {
+        const entEmps = finalEmployees.filter(e => e.legal_entity_id === ent.id);
+        const entSaudis = entEmps.filter(e => e.isSaudi);
+        const entResidents = entEmps.filter(e => !e.isSaudi);
+        const entSaudizationCost = entitiesSaudizationCost[ent.id] || 0;
+        
+        return {
+            id: ent.id,
+            name: ent.name,
+            unified_number: ent.unified_number || 'غير محدد',
+            total_count: entEmps.length,
+            saudi_count: entSaudis.length,
+            saudi_working: entSaudis.filter(s => s.saudi_type === 'working').length,
+            saudi_support: entSaudis.filter(s => s.saudi_type === 'support').length,
+            resident_count: entResidents.length,
+            effective_saudization_cost: entSaudizationCost,
+            burden_per_resident: entResidents.length > 0 ? entSaudizationCost / entResidents.length : 0
+        };
+    });
+
+    // 5. Compute Branches Breakdown (Operational view based on cost_branch_id)
+    const branchesBreakdown = branches.map(br => {
+        const brEmps = finalEmployees.filter(e => e.cost_branch_id === br.id);
+        const brSaudis = brEmps.filter(e => e.isSaudi);
+        const brResidents = brEmps.filter(e => !e.isSaudi);
+        const brCost = brEmps.reduce((sum, e) => sum + e.total_monthly_cost, 0);
+
+        return {
+            id: br.id,
+            name: br.name,
+            cr_number: br.cr_number || 'غير محدد',
+            parent_entity_name: entities.find(e => e.id === br.entity_id)?.name || 'غير محدد',
+            total_count: brEmps.length,
+            saudi_count: brSaudis.length,
+            resident_count: brResidents.length,
+            total_monthly_cost: brCost,
+            total_annual_cost: brCost * 12
+        };
+    });
+    
     return {
         summary: {
             total_employees: employees.length,
-            saudi_count: calculated.filter(e => e.isSaudi).length,
-            resident_count: calculated.filter(e => !e.isSaudi).length,
-            saudization_rate: employees.length > 0 ? (calculated.filter(e => e.isSaudi).length / employees.length) * 100 : 0,
+            saudi_count: calculatedSaudis.length,
+            saudi_working: calculatedSaudis.filter(s => s.saudi_type === 'working').length,
+            saudi_support: calculatedSaudis.filter(s => s.saudi_type === 'support').length,
+            resident_count: totalResidents,
+            saudization_rate: employees.length > 0 ? (calculatedSaudis.length / employees.length) * 100 : 0,
             total_monthly_payroll: finalEmployees.reduce((sum, e) => sum + e.gross_salary, 0),
             total_saudization_burden_monthly: totalSaudizationCost,
             saudization_burden_per_resident: companySaudizationBurdenPerResident,
@@ -182,6 +209,7 @@ function calculateCompanyCosts(companyId) {
             total_company_annual_cost: finalEmployees.reduce((sum, e) => sum + e.total_annual_cost, 0)
         },
         entities_breakdown: entitiesBreakdown,
+        branches_breakdown: branchesBreakdown,
         employees: finalEmployees
     };
 }
