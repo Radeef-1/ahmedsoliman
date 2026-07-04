@@ -18,12 +18,48 @@ export default function CostSettings({ token, company, onCompanyUpdate, onSettin
     const [companyName, setCompanyName] = useState(company?.name || '');
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [resetting, setResetting] = useState(false);
     const [message, setMessage] = useState('');
     const [error, setError] = useState('');
 
     useEffect(() => {
         fetchSettings();
     }, []);
+
+    const handleReset = async () => {
+        const confirmReset = window.confirm("تحذير هام جداً: هل أنت متأكد من رغبتك في مسح كافة الموظفين، الفروع، المشاريع، والرواتب نهائياً من قاعدة البيانات للبدء من جديد؟ لا يمكن التراجع عن هذا الإجراء.");
+        if (!confirmReset) return;
+
+        setResetting(true);
+        setError('');
+        setMessage('');
+
+        try {
+            const response = await fetch(API_URL + '/api/reset-data', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (response.status === 401 || response.status === 403) {
+                if (onUnauthorized) onUnauthorized();
+                return;
+            }
+
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.error || 'فشل إعادة تهيئة البيانات');
+            }
+
+            setMessage('تم مسح وإعادة تهيئة كافة البيانات بنجاح!');
+            if (onSettingsUpdated) onSettingsUpdated();
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setResetting(false);
+        }
+    };
 
     const fetchSettings = async () => {
         try {
@@ -271,6 +307,22 @@ export default function CostSettings({ token, company, onCompanyUpdate, onSettin
                 <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                     <strong>تأثير التغييرات:</strong> سيقوم النظام تلقائياً وبشكل فوري بإعادة حساب التكلفة الكلية الشهرية والسنوية لجميع الموظفين المقيمين، بالإضافة إلى تحديث نسب وتكاليف السعودة الموزعة بناءً على المعايير الجديدة التي تحددها هنا.
                 </p>
+            </div>
+
+            {/* Danger Zone: Reset Data */}
+            <div className="glass-panel" style={{ marginTop: '24px', borderColor: 'rgba(239, 68, 68, 0.4)', background: 'rgba(239, 68, 68, 0.02)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px', borderBottom: '1px solid rgba(239, 68, 68, 0.2)', paddingBottom: '12px' }}>
+                    <AlertCircle className="menu-item-icon" style={{ color: 'var(--danger)' }} />
+                    <h3 style={{ color: 'var(--danger)', margin: 0 }}>منطقة الخطورة - إعادة تهيئة المنشأة</h3>
+                </div>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: '1.6' }}>
+                    سيقوم هذا الخيار بحذف وإزالة كافة سجلات الموظفين، كشوف الرواتب، الفروع التشغيلية، الكيانات المخصصة، والمشاريع المضافة من حسابك نهائياً لتتمكن من رفع ملف إكسيل جديد أو البدء من الصفر. <strong>هذا الإجراء نهائي ولا يمكن التراجع عنه.</strong>
+                </p>
+                <div>
+                    <button type="button" onClick={handleReset} className="btn" style={{ background: 'var(--danger)', color: '#fff' }} disabled={resetting}>
+                        {resetting ? 'جاري مسح البيانات...' : 'حذف وإعادة تهيئة كافة البيانات'}
+                    </button>
+                </div>
             </div>
         </div>
     );

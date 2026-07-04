@@ -363,6 +363,15 @@ app.delete('/api/employees/:id', authenticateToken, (req, res) => {
     }
 });
 
+app.post('/api/reset-data', authenticateToken, (req, res) => {
+    try {
+        db.resetCompanyData(req.user.id);
+        res.json({ message: 'تم إعادة تهيئة وحذف كافة بيانات المجموعة بنجاح' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // -------------------------------------------------------------
 // CALCULATED COST SHEET ENDPOINT
 // -------------------------------------------------------------

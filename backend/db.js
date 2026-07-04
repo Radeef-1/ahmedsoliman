@@ -847,6 +847,38 @@ function deleteEmployee(empId, companyId) {
     return false;
 }
 
+// Reset company data to defaults
+function resetCompanyData(companyId) {
+    const cid = Number(companyId);
+    const companyData = {
+        cost_settings: [{
+            company_id: cid,
+            gosi_saudi_rate: 0.22,
+            gosi_resident_rate: 0.02,
+            ticket_annual_cost: 900.0,
+            passport_annual_fee: 650.0,
+            work_permit_annual_fee: 9700.0,
+            vacation_days_per_year: 21,
+            unified_number: '',
+            cr_number: ''
+        }],
+        projects: [{ id: 1, company_id: cid, name: 'الإدارة العامة', entity_id: 1, branch_id: 1 }],
+        entities: [{ id: 1, company_id: cid, name: 'الشركة الرئيسية الافتراضية', unified_number: '' }],
+        branches: [{ id: 1, company_id: cid, name: 'الفرع الافتراضي', cr_number: '', entity_id: 1 }],
+        employees: [],
+        salaries: [],
+        resident_extra_costs: [],
+        counters: {
+            projects: 1,
+            entities: 1,
+            branches: 1,
+            employees: 0
+        }
+    };
+    saveCompanyData(cid, companyData);
+    return true;
+}
+
 module.exports = {
     initDatabase,
     preloadCompanyCache,
@@ -870,5 +902,6 @@ module.exports = {
     getEmployeesDetailed,
     createEmployee,
     updateEmployee,
-    deleteEmployee
+    deleteEmployee,
+    resetCompanyData
 };
