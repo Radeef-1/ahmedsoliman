@@ -3,7 +3,7 @@ import { UploadCloud, FileSpreadsheet, AlertTriangle, CheckCircle, ArrowLeftRigh
 const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '' : 'http://localhost:5000');
 
 
-export default function ExcelImport({ token, onImportSuccess }) {
+export default function ExcelImport({ token, onImportSuccess, onUnauthorized }) {
     const [file, setFile] = useState(null);
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState(null);
@@ -64,6 +64,11 @@ export default function ExcelImport({ token, onImportSuccess }) {
                 headers: { 'Authorization': `Bearer ${token}` },
                 body: formData
             });
+
+            if (response.status === 401 || response.status === 403) {
+                if (onUnauthorized) onUnauthorized();
+                return;
+            }
 
             const data = await response.json();
             if (!response.ok) {

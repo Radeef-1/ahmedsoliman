@@ -48,6 +48,10 @@ export default function App() {
             const projRes = await fetch(API_URL + '/api/projects', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
+            if (projRes.status === 401 || projRes.status === 403) {
+                handleLogout();
+                return;
+            }
             const projs = await projRes.json();
             if (projRes.ok) setProjects(projs);
 
@@ -55,6 +59,10 @@ export default function App() {
             const entRes = await fetch(API_URL + '/api/entities', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
+            if (entRes.status === 401 || entRes.status === 403) {
+                handleLogout();
+                return;
+            }
             const ents = await entRes.json();
             if (entRes.ok) setEntities(ents);
 
@@ -62,6 +70,10 @@ export default function App() {
             const costRes = await fetch(API_URL + '/api/costs', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
+            if (costRes.status === 401 || costRes.status === 403) {
+                handleLogout();
+                return;
+            }
             const costs = await costRes.json();
             if (costRes.ok) {
                 setCostsData(costs);
@@ -311,6 +323,7 @@ export default function App() {
                         entities={entities}
                         employees={employees}
                         onDataChange={fetchData}
+                        onUnauthorized={handleLogout}
                     />
                 )}
 
@@ -325,6 +338,7 @@ export default function App() {
                     <ExcelImport 
                         token={token}
                         onImportSuccess={fetchData}
+                        onUnauthorized={handleLogout}
                     />
                 )}
 
@@ -339,6 +353,7 @@ export default function App() {
                                     localStorage.setItem('company', JSON.stringify(updatedCompany));
                                 }}
                                 onSettingsUpdated={fetchData}
+                                onUnauthorized={handleLogout}
                             />
                             
                             {/* Entity/Sub-company Management Panel */}

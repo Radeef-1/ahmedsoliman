@@ -3,7 +3,7 @@ import { Settings, Save, AlertCircle, Building } from 'lucide-react';
 const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '' : 'http://localhost:5000');
 
 
-export default function CostSettings({ token, company, onCompanyUpdate, onSettingsUpdated }) {
+export default function CostSettings({ token, company, onCompanyUpdate, onSettingsUpdated, onUnauthorized }) {
     const [settings, setSettings] = useState({
         gosi_saudi_rate: 0.22,
         gosi_resident_rate: 0.02,
@@ -28,6 +28,10 @@ export default function CostSettings({ token, company, onCompanyUpdate, onSettin
             const response = await fetch(API_URL + '/api/settings', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
+            if (response.status === 401 || response.status === 403) {
+                if (onUnauthorized) onUnauthorized();
+                return;
+            }
             const data = await response.json();
             if (response.ok && data) {
                 setSettings(data);
@@ -59,6 +63,11 @@ export default function CostSettings({ token, company, onCompanyUpdate, onSettin
                     body: JSON.stringify({ name: companyName })
                 });
                 
+                if (profRes.status === 401 || profRes.status === 403) {
+                    if (onUnauthorized) onUnauthorized();
+                    return;
+                }
+
                 const profData = await profRes.json();
                 if (!profRes.ok) {
                     throw new Error(profData.error || 'فشل تحديث اسم الشركة');
@@ -79,6 +88,11 @@ export default function CostSettings({ token, company, onCompanyUpdate, onSettin
                 },
                 body: JSON.stringify(settings)
             });
+
+            if (response.status === 401 || response.status === 403) {
+                if (onUnauthorized) onUnauthorized();
+                return;
+            }
 
             const data = await response.json();
             if (!response.ok) {

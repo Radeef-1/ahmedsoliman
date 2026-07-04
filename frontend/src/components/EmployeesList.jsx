@@ -3,7 +3,7 @@ import { Plus, Search, Edit2, Trash2, X } from 'lucide-react';
 const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '' : 'http://localhost:5000');
 
 
-export default function EmployeesList({ token, projects, entities = [], employees, onDataChange }) {
+export default function EmployeesList({ token, projects, entities = [], employees, onDataChange, onUnauthorized }) {
     const [search, setSearch] = useState('');
     const [filterProject, setFilterProject] = useState('');
     const [filterEntity, setFilterEntity] = useState('');
@@ -99,6 +99,10 @@ export default function EmployeesList({ token, projects, entities = [], employee
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
+            if (response.status === 401 || response.status === 403) {
+                if (onUnauthorized) onUnauthorized();
+                return;
+            }
             if (!response.ok) {
                 const data = await response.json();
                 throw new Error(data.error || 'فشل حذف الموظف');
@@ -147,6 +151,11 @@ export default function EmployeesList({ token, projects, entities = [], employee
                 },
                 body: JSON.stringify(payload)
             });
+
+            if (response.status === 401 || response.status === 403) {
+                if (onUnauthorized) onUnauthorized();
+                return;
+            }
 
             const data = await response.json();
             if (!response.ok) {
