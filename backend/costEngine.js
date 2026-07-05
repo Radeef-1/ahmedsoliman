@@ -187,14 +187,27 @@ function calculateCompanyCosts(companyId) {
     const supportSaudis    = calculatedSaudis.filter(e => e.saudi_type === 'support');
     const totalSaudizationCost = supportSaudis.reduce((sum, e) => sum + e.base_monthly_cost, 0);
 
-    // Fix #5: use entity id as key; null → sentinel '_unassigned' to prevent cross-null sharing
-    const entityKey = (id) => (id === null || id === undefined) ? '_unassigned' : id;
+    // Normalise entity key: null/undefined → sentinel string to avoid cross-null mixing.
+    // We use String(id) for real ids so numeric 1 and string "1" both map to "1".
+    const entityKey = (id) =>
+        (id === null || id === undefined) ? '__unassigned__' : String(id);
 
+    // Build per-entity saudization cost map directly from supportSaudis.
+    // We iterate supportSaudis (not entities list) so no support Saudi is lost
+    // even if their entity_id somehow isn't in the entities list.
     const entitiesSaudizationCost = {};
-    entities.forEach(ent => {
-        const k = entityKey(ent.id);
-        const entSupportSaudis = supportSaudis.filter(e => entityKey(e.legal_entity_id) === k);
-        entitiesSaudizationCost[k] = entSupportSaudis.reduce((sum, e) => sum + e.base_monthly_cost, 0);
+    supportSaudis.forEach(e => {
+        const k = entityKey(e.legal_entity_id);
+        entitiesSaudizationCost[k] = (entitiesSaudizationCost[k] || 0) + e.base_monthly_cost;
+    });
+
+    // Also pre-build per-entity resident count for O(1) lookup
+    const entitiesResidentCount = {};
+    calculated.forEach(e => {
+        if (!e.isSaudi) {
+            const k = entityKey(e.legal_entity_id);
+            entitiesResidentCount[k] = (entitiesResidentCount[k] || 0) + 1;
+        }
     });
 
     // Company-wide average burden per resident (for summary KPI only)
@@ -209,39 +222,36 @@ function calculateCompanyCosts(companyId) {
         const k = entityKey(emp.legal_entity_id);
 
         if (!emp.isSaudi) {
-            // Fix #5: isolate null-entity employees – they get 0 burden if no support Saudi in same entity
             const entSaudizationCost = entitiesSaudizationCost[k] || 0;
-            const entResidents = calculated.filter(
-                e => !e.isSaudi && entityKey(e.legal_entity_id) === k
-            );
-            const entBurden = entResidents.length > 0
-                ? entSaudizationCost / entResidents.length
+            const entResidentCount   = entitiesResidentCount[k]   || 0;
+            const entBurden = entResidentCount > 0
+                ? entSaudizationCost / entResidentCount
                 : 0;
 
-            emp.saudization_burden   = entBurden;
-            emp.total_monthly_cost   = emp.base_monthly_cost + entBurden;
-            emp.total_annual_cost    = emp.total_monthly_cost * 12;
+            emp.saudization_burden = entBurden;
+            emp.total_monthly_cost = emp.base_monthly_cost + entBurden;
+            emp.total_annual_cost  = emp.total_monthly_cost * 12;
 
         } else if (emp.saudi_type === 'support') {
-            // Support Saudi cost fully redistributed; direct cost = 0
-            emp.saudization_burden   = 0;
-            emp.total_monthly_cost   = 0;
-            emp.total_annual_cost    = 0;
+            // Support Saudi cost fully redistributed to residents; direct cost = 0
+            emp.saudization_burden = 0;
+            emp.total_monthly_cost = 0;
+            emp.total_annual_cost  = 0;
 
         } else {
-            // Working Saudi – direct operational cost
-            emp.saudization_burden   = 0;
-            emp.total_monthly_cost   = emp.base_monthly_cost;
-            emp.total_annual_cost    = emp.total_monthly_cost * 12;
+            // Working Saudi – direct operational cost kept as-is
+            emp.saudization_burden = 0;
+            emp.total_monthly_cost = emp.base_monthly_cost;
+            emp.total_annual_cost  = emp.total_monthly_cost * 12;
         }
         return emp;
     });
 
     // 4. Legal Entities Breakdown (Compliance / Nitaqat view)
     const entitiesBreakdown = entities.map(ent => {
-        const k        = entityKey(ent.id);
-        const entEmps  = finalEmployees.filter(e => entityKey(e.legal_entity_id) === k);
-        const entSaudis    = entEmps.filter(e => e.isSaudi);
+        const k           = entityKey(ent.id);
+        const entEmps     = finalEmployees.filter(e => entityKey(e.legal_entity_id) === k);
+        const entSaudis   = entEmps.filter(e => e.isSaudi);
         const entResidents = entEmps.filter(e => !e.isSaudi);
         const entSaudizationCost = entitiesSaudizationCost[k] || 0;
 
