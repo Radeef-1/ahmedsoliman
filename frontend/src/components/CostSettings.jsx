@@ -5,7 +5,7 @@ const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '' : 'ht
 
 export default function CostSettings({ token, company, onCompanyUpdate, onSettingsUpdated, onUnauthorized }) {
     const [settings, setSettings] = useState({
-        gosi_saudi_rate: 0.22,
+        gosi_saudi_rate: 0.1175,
         gosi_resident_rate: 0.02,
         ticket_annual_cost: 900.0,
         passport_annual_fee: 650.0,
@@ -218,16 +218,16 @@ export default function CostSettings({ token, company, onCompanyUpdate, onSettin
                 <div className="form-grid">
                     {/* GOSI Rates */}
                     <div className="form-group">
-                        <label>نسبة التأمينات الاجتماعية للسعوديين (GOSI)</label>
+                        <label>نسبة GOSI على صاحب العمل للسعوديين (حصة المنشأة فقط)</label>
                         <input
                             type="number"
-                            step="0.01"
+                            step="0.001"
                             className="form-control"
                             value={settings.gosi_saudi_rate}
                             onChange={(e) => handleInputChange('gosi_saudi_rate', e.target.value)}
                             required
                         />
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>مثال: 0.22 تعني 22% (تتحملها المنشأة)</span>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>حصة صاحب العمل فقط — القيمة الافتراضية 0.1175 (11.75%). لا تشمل حصة الموظف 9.75%</span>
                     </div>
 
                     <div className="form-group">

@@ -284,7 +284,8 @@ export default function Dashboard({
                                 <div style={{ textAlign: 'center', padding: '10px', background: 'rgba(16, 185, 129, 0.08)', border: '1px dashed var(--success)', borderRadius: '10px' }}>
                                     <span style={{ fontSize: '0.7rem', color: 'var(--success)', display: 'block', marginBottom: '2px' }}>متوسط عبء السعودة للمقيم الواحد</span>
                                     <span style={{ fontSize: '1.4rem', fontWeight: '800', color: 'var(--success)' }}>
-                                        +{summary.saudization_burden_per_resident.toFixed(2)} <span style={{ fontSize: '0.8rem' }}>ريال/شهري</span>
+                                        {/* Fix #10: compute from filtered employees, not global summary */}
+                                        +{residentCount > 0 ? (totalSaudizationBurden / residentCount).toFixed(2) : '0.00'} <span style={{ fontSize: '0.8rem' }}>ريال/شهري</span>
                                     </span>
                                 </div>
                             </div>

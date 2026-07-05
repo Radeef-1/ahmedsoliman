@@ -82,8 +82,9 @@ async function initDatabase() {
             const companyData = {
                 cost_settings: [{
                     company_id: id,
-                    gosi_saudi_rate: 0.22,
+                    gosi_saudi_rate: 0.1175,
                     gosi_resident_rate: 0.02,
+                    gosi_saudi_deduction_rate: 0.0975,
                     ticket_annual_cost: 900.0,
                     passport_annual_fee: 650.0,
                     work_permit_annual_fee: 9700.0,
@@ -149,8 +150,9 @@ async function initDatabase() {
             const companyData = {
                 cost_settings: [{
                     company_id: id,
-                    gosi_saudi_rate: 0.22,
+                    gosi_saudi_rate: 0.1175,
                     gosi_resident_rate: 0.02,
+                    gosi_saudi_deduction_rate: 0.0975,
                     ticket_annual_cost: 900.0,
                     passport_annual_fee: 650.0,
                     work_permit_annual_fee: 9700.0,
@@ -264,8 +266,9 @@ async function preloadCompanyCache(companyId) {
             const companyData = {
                 cost_settings: [{
                     company_id: cid,
-                    gosi_saudi_rate: 0.22,
+                    gosi_saudi_rate: 0.1175,
                     gosi_resident_rate: 0.02,
+                    gosi_saudi_deduction_rate: 0.0975,
                     ticket_annual_cost: 900.0,
                     passport_annual_fee: 650.0,
                     work_permit_annual_fee: 9700.0,
@@ -340,8 +343,9 @@ function createCompany(name, email, password_hash) {
     const companyData = {
         cost_settings: [{
             company_id: id,
-            gosi_saudi_rate: 0.22,
+            gosi_saudi_rate: 0.1175,
             gosi_resident_rate: 0.02,
+            gosi_saudi_deduction_rate: 0.0975,
             ticket_annual_cost: 900.0,
             passport_annual_fee: 650.0,
             work_permit_annual_fee: 9700.0,
@@ -407,12 +411,15 @@ function updateCompanyProfile(companyId, name) {
 // Cost Settings (Unified Number and CR Number included)
 function getSettings(companyId) {
     const cData = loadCompanyData(companyId);
-    let settings = cData.cost_settings.find(s => s.company_id === companyId);
+    // Fix #9: normalise both sides to Number to avoid string vs number === mismatch
+    const cid = Number(companyId);
+    let settings = cData.cost_settings.find(s => Number(s.company_id) === cid);
     if (!settings) {
         settings = {
             company_id: companyId,
-            gosi_saudi_rate: 0.22,
+            gosi_saudi_rate: 0.1175,
             gosi_resident_rate: 0.02,
+            gosi_saudi_deduction_rate: 0.0975,
             ticket_annual_cost: 900.0,
             passport_annual_fee: 650.0,
             work_permit_annual_fee: 9700.0,
@@ -431,8 +438,9 @@ function updateSettings(companyId, settingsData) {
     const idx = cData.cost_settings.findIndex(s => s.company_id === companyId);
     const updated = {
         company_id: companyId,
-        gosi_saudi_rate: Number(settingsData.gosi_saudi_rate ?? 0.22),
+        gosi_saudi_rate: Number(settingsData.gosi_saudi_rate ?? 0.1175),
         gosi_resident_rate: Number(settingsData.gosi_resident_rate ?? 0.02),
+        gosi_saudi_deduction_rate: Number(settingsData.gosi_saudi_deduction_rate ?? 0.0975),
         ticket_annual_cost: Number(settingsData.ticket_annual_cost ?? 900),
         passport_annual_fee: Number(settingsData.passport_annual_fee ?? 650),
         work_permit_annual_fee: Number(settingsData.work_permit_annual_fee ?? 9700),
@@ -775,24 +783,48 @@ function updateEmployee(companyId, empId, empData) {
         }
     }
 
-    const resolvedBranchId = branch_id !== undefined ? (branch_id ? Number(branch_id) : null) : cData.employees[empIdx].branch_id;
-    const resolvedCostBranchId = cost_branch_id !== undefined ? (cost_branch_id ? Number(cost_branch_id) : null) : cData.employees[empIdx].cost_branch_id;
+    const resolvedBranchId = branch_id !== undefined
+        ? (branch_id ? Number(branch_id) : null)
+        : cData.employees[empIdx].branch_id;
+
+    // Fix #4: use explicit undefined check so intentional null cost_branch_id is preserved,
+    //         do NOT fall back to resolvedBranchId on update (only on create).
+    const resolvedCostBranchId = cost_branch_id !== undefined
+        ? (cost_branch_id ? Number(cost_branch_id) : null)
+        : cData.employees[empIdx].cost_branch_id;
+
+    // Fix #7: resolve effective nationality before deciding saudi_type,
+    //         so that changing from resident→Saudi or Saudi→resident works correctly.
+    const effectiveNationality = nationality
+        ? nationality.trim()
+        : cData.employees[empIdx].nationality;
+
+    const isSaudiNow = effectiveNationality === 'سعودي' || effectiveNationality === 'سعودية';
+
+    // Determine updated saudi_type:
+    //   - non-Saudi  → always null
+    //   - Saudi      → use incoming value if provided, else keep existing, else default 'working'
+    const updatedSaudiType = isSaudiNow
+        ? (saudi_type !== undefined && saudi_type !== null
+            ? saudi_type
+            : (cData.employees[empIdx].saudi_type || 'working'))
+        : null;
 
     // 1. Update basic details
     cData.employees[empIdx] = {
         ...cData.employees[empIdx],
         employee_code: employee_code ? employee_code.toString().trim() : cData.employees[empIdx].employee_code,
-        name: name ? name.trim() : cData.employees[empIdx].name,
-        nationality: nationality ? nationality.trim() : cData.employees[empIdx].nationality,
-        gender: gender ? gender.trim() : cData.employees[empIdx].gender,
-        status: status || cData.employees[empIdx].status,
-        branch_id: resolvedBranchId,
-        cost_branch_id: resolvedCostBranchId || resolvedBranchId,
-        project_id: project_id !== undefined ? (project_id ? Number(project_id) : null) : cData.employees[empIdx].project_id,
-        saudi_type: (nationality || cData.employees[empIdx].nationality) === 'سعودي' 
-            ? (saudi_type || cData.employees[empIdx].saudi_type || 'working') 
-            : null,
-        hire_date: hire_date !== undefined ? hire_date : cData.employees[empIdx].hire_date
+        name:          name          ? name.trim()                      : cData.employees[empIdx].name,
+        nationality:   effectiveNationality,
+        gender:        gender        ? gender.trim()                    : cData.employees[empIdx].gender,
+        status:        status        || cData.employees[empIdx].status,
+        branch_id:     resolvedBranchId,
+        cost_branch_id: resolvedCostBranchId,
+        project_id:    project_id !== undefined
+                           ? (project_id ? Number(project_id) : null)
+                           : cData.employees[empIdx].project_id,
+        saudi_type:    updatedSaudiType,
+        hire_date:     hire_date !== undefined ? hire_date : cData.employees[empIdx].hire_date
     };
 
     // 2. Update salaries
@@ -853,8 +885,9 @@ function resetCompanyData(companyId) {
     const companyData = {
         cost_settings: [{
             company_id: cid,
-            gosi_saudi_rate: 0.22,
+            gosi_saudi_rate: 0.1175,
             gosi_resident_rate: 0.02,
+            gosi_saudi_deduction_rate: 0.0975,
             ticket_annual_cost: 900.0,
             passport_annual_fee: 650.0,
             work_permit_annual_fee: 9700.0,
