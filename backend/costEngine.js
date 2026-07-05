@@ -34,8 +34,8 @@ function calculateEmployeeCost(emp, settings) {
     
     if (isEmpSaudi) {
         // Saudi employee costing
-        // GOSI: e.g. 22% of basic + housing
-        const gosiBase = basic + housing;
+        // GOSI: e.g. 22% of basic + housing, but minimum GOSI base is 4,000 for Saudization.
+        const gosiBase = Math.max(basic + housing, 4000);
         gosi = gosiBase * Number(settings.gosi_saudi_rate || 0.22);
     } else {
         // Resident employee costing
